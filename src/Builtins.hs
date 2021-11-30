@@ -9,9 +9,10 @@ import Data.Map.Strict qualified as Map
 import Types
 
 import Builtins.Bootstrap (builtinBootstrap)
+import Builtins.ControlFlow (builtinControlFlow)
 import Builtins.Definitions (builtinDefinitions)
-import Builtins.Primitives (builtinPrimitives)
 import Builtins.Predicates (builtinPredicates)
+import Builtins.Primitives (builtinPrimitives)
 
 mkBuiltins :: IO Environment
 mkBuiltins = do
@@ -22,6 +23,7 @@ mkBuiltins = do
     builtins =
       [ builtinBootstrap
       , builtinDefinitions
+      , builtinControlFlow
       , builtinPredicates
       , builtinPrimitives
       ]

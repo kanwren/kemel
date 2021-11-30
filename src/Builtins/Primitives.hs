@@ -8,7 +8,7 @@ module Builtins.Primitives (builtinPrimitives) where
 import Control.Monad (zipWithM)
 import Control.Monad.Reader (ask)
 import Control.Monad.IO.Class
-import Data.Bifunctor (second)
+import Data.Bifunctor (second, first)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -25,7 +25,7 @@ import Builtins.Utils (builtinApp, Builtin)
 unsnoc :: [a] -> Maybe ([a], a)
 unsnoc [] = Nothing
 unsnoc [x] = Just ([], x)
-unsnoc (x:xs) = (\(ys, y) -> (x:ys, y)) <$> unsnoc xs
+unsnoc (x:xs) = first (x:) <$> unsnoc xs
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
@@ -96,9 +96,9 @@ append :: Builtin
 append xs =
   case unsnoc xs of
     Nothing -> pure $ LList []
-    Just (_, LList _) -> fmap (LList . concat) $ traverse getList xs
+    Just (_, LList _) -> LList . concat <$> traverse getList xs
     Just (ys, z) -> do
-      res <- fmap concat $ traverse getList ys
+      res <- concat <$> traverse getList ys
       case NonEmpty.nonEmpty res of
         Nothing -> pure z
         Just ys' -> pure $ LDottedList ys' z
@@ -117,10 +117,6 @@ cdr [LList []] = evalError "cdr: empty list"
 cdr [LList (_:xs)] = pure $ LList xs
 cdr [_] = evalError "cdr: expected list"
 cdr args = numArgs "cdr" 1 args
-
--- primEval :: Builtin
--- primEval [e] = eval e
--- primEval args = numArgs "eval" 1 args
 
 typeOf :: Builtin
 typeOf [v] = pure $ LSymbol $ typeToSymbol v

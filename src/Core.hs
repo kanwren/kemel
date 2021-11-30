@@ -120,9 +120,11 @@ typep name v = go
 
 -- Evaluate a list of expressions and return the value of the final expression
 progn :: Environment -> [Expr] -> Eval Expr
-progn _   [] = pure nil
-progn env [x] = eval env x
-progn env (x:y) = eval env x *> progn env y
+progn env = go
+  where
+    go [] = pure nil
+    go [x] = eval env x
+    go (x:y) = eval env x *> go y
 
 buildTagTable :: [Expr] -> Eval (Map TagName Int, Vector Expr)
 buildTagTable = fmap collect . foldlM go (0, mempty, mempty)
