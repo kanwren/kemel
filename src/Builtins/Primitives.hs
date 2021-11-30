@@ -131,7 +131,7 @@ asInts name = go []
   where
     go acc [] = pure $ reverse acc
     go acc (LInt x:xs) = go (x:acc) xs
-    go _ (e:_) = evalError $ showt name <> ": not an integer: " <> renderType e
+    go _ (e:_) = evalError $ showt name <> ": expected integer, but got " <> renderType e
 
 iadd :: Builtin
 iadd args = asInts "+" args <&> LInt . foldl' (+) 0

@@ -59,8 +59,8 @@ data CombinerType = OperativeCombiner | ApplicativeCombiner
 -- TODO: rename this type
 data Fun = BuiltinFun ([Expr] -> Eval Expr) | UserFun !Closure
 data Combiner = Combiner
-  { combinerType  :: CombinerType
-  , combinerFun :: Fun
+  { combinerType :: CombinerType
+  , combinerFun  :: Fun
   }
 
 wrap, unwrap :: Combiner -> Combiner

@@ -1,21 +1,83 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Builtins.Bootstrap (builtinBootstrap) where
 
+import Control.Monad.Reader (ask)
+import TextShow (showt)
+
+import Core (nil, eval, defineVar, mkVau, combine, operate)
+import Errors
 import Types
-import Builtins.Utils (builtinOp, builtinApp)
+import Builtins.Utils (builtinOp, builtinApp, Builtin)
+
+-- ($vau (formals . rest) env body)
+vau :: Builtin
+vau (params:env:body) = do
+  envName <- case env of
+    LSymbol "_" -> pure Nothing
+    LSymbol s -> pure $ Just s
+    x -> evalError $ "$vau: invalid environment name: " <> showt x
+  LCombiner <$> mkVau envName params body
+vau args = numArgsAtLeast "$vau" 2 args
+
+define :: Builtin
+define [LSymbol name] = do
+  env <- ask
+  defineVar name nil env
+  pure nil
+define [LSymbol name, x] = do
+  env <- ask
+  val <- eval env x
+  defineVar name val env
+  pure val
+define [e, _] = evalError $ "$define!: expected symbol, but got " <> renderType e
+define args = numArgsBound "$define!" (1, 2) args
+
+primEval :: Builtin
+primEval [e, LEnv env] = eval env e
+primEval [_, x] = evalError $ "eval: expected environment, but got " <> renderType x
+primEval args = numArgs "eval" 2 args
+
+primWrap :: Builtin
+primWrap [LCombiner c] = pure $ LCombiner $ wrap c
+primWrap [x] = evalError $ "wrap: expected combiner, but got " <> renderType x
+primWrap args = numArgs "wrap" 1 args
+
+primUnwrap :: Builtin
+primUnwrap [LCombiner c] = pure $ LCombiner $ unwrap c
+primUnwrap [x] = evalError $ "unwrap: expected combiner, but got " <> renderType x
+primUnwrap args = numArgs "unwrap" 1 args
+
+-- This is built into the parser, so needs to be here
+quote :: Builtin
+quote [x] = pure x
+quote args = numArgs "quote" 1 args
+
+primCombine :: Builtin
+primCombine [LCombiner combiner, LList operands, LEnv env] = combine env combiner operands
+primCombine [x, LList _, _     ] = evalError $ "combine: expected combiner, but got " <> renderType x
+primCombine [_, x,       LEnv _] = evalError $ "combine: expected list of operands, but got " <> renderType x
+primCombine [_, _,       x     ] = evalError $ "combine: expected environment, but got " <> renderType x
+primCombine args = numArgs "combine" 3 args
+
+primOperate :: Builtin
+primOperate [LCombiner combiner, LList operands, LEnv env] = operate env combiner operands
+primOperate [x, LList _, _     ] = evalError $ "operate: expected combiner, but got " <> renderType x
+primOperate [_, x,       LEnv _] = evalError $ "operate: expected list of operands, but got " <> renderType x
+primOperate [_, _,       x     ] = evalError $ "operate: expected environment, but got " <> renderType x
+primOperate args = numArgs "operate" 3 args
 
 builtinBootstrap :: [(Symbol, Expr)]
 builtinBootstrap =
-  [ ("$vau", builtinOp undefined)
-  , ("$define!", builtinOp undefined)
+  [ ("$vau", builtinOp vau)
+  , ("$define!", builtinOp define)
   , ("eval", builtinApp primEval)
   , ("wrap", builtinApp primWrap)
   , ("unwrap", builtinApp primUnwrap)
+  , ("combine", builtinApp primCombine)
+  , ("operate", builtinApp primOperate)
+  , ("quote", builtinOp quote)
   ]
-  where
-    primUnwrap = undefined
-    primEval = undefined
-    primWrap = undefined
 

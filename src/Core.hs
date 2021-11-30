@@ -63,31 +63,36 @@ defineVar i val (Environment envVar) = do
       liftIO $ writeIORef envVar $ Map.insert i ref mapping
     Just ref -> liftIO $ writeIORef ref val
 
-mkVau :: Maybe Symbol -> Int -> [Expr] -> Eval Closure
-mkVau dynamicEnvName n args = do
-  env <- ask
-  case args of
-    (params:body) -> do
-      (mainParams, rest) <- parseArgs params
-      pure Closure
-        { closureParams = mainParams
-        , closureRest = rest
-        , closureBody = body
-        , closureStaticEnv = env
-        , closureDynamicEnv = dynamicEnvName
-        }
-    -- if name is given, it was a parameter, so count it in the list
-    _ -> numArgsAtLeast "$vau" n args
-  where
+mkVau :: Maybe Symbol -> Expr -> [Expr] -> Eval Combiner
+mkVau dynamicEnvName params body = do
+  let
     toError :: Text -> Eval a
     toError e = evalError $ "$vau" <> ": " <> e
+
     toSymbol :: Expr -> Eval Symbol
     toSymbol (LSymbol s) = pure s
     toSymbol x = toError $ "invalid argument list: invalid parameter " <> showt x
+
     parseArgs :: Expr -> Eval ([Symbol], Maybe Symbol)
-    parseArgs (LList params) = (,Nothing) <$> traverse toSymbol params
-    parseArgs (LDottedList params rest) = (,) <$> traverse toSymbol (NonEmpty.toList params) <*> (Just <$> toSymbol rest)
+    parseArgs (LList formals) = (,Nothing) <$> traverse toSymbol formals
+    parseArgs (LDottedList formals rest) = (,) <$> traverse toSymbol (NonEmpty.toList formals) <*> (Just <$> toSymbol rest)
     parseArgs x = toError $ "invalid argument list: " <> showt x
+  (mainParams, rest) <- parseArgs params
+  env <- ask
+  let
+    closure = Closure
+      { closureParams = mainParams
+      , closureRest = rest
+      , closureBody = body
+      , closureStaticEnv = env
+      , closureDynamicEnv = dynamicEnvName
+      }
+    fun = UserFun closure
+    combiner = Combiner
+      { combinerType = OperativeCombiner
+      , combinerFun = fun
+      }
+  pure combiner
 
 typep :: Symbol -> Expr -> Expr -> Eval Bool
 typep name v = go
@@ -145,20 +150,14 @@ block blockName a =
     e -> throwError e
 
 eval :: Environment -> Expr -> Eval Expr
-eval env (LSymbol sym) = lookupVar sym env
+eval env (LSymbol sym)      = lookupVar sym env
 eval env (LDottedList xs _) = eval env (LList (NonEmpty.toList xs))
-eval _ (LList []) = pure nil
-eval env (LList (f:args)) =
-  case f of
-    -- NOTE: this builtin is needed to support quoting; a quoted expression
-    -- `*x*` is literally turned into `(quote *x*)`, which should result in *x*
-    -- without evaluating it. The renderer simply has a special case for lists
-    -- of the form `(list 'quote x)`.
-    _ -> eval env f >>= \case
-      LCombiner c -> combine env c args
-      e -> evalError $ "expected combiner in call: " <> showt e
+eval _   (LList [])         = pure nil
+eval env (LList (f:args))   = eval env f >>= \case
+  LCombiner c -> combine env c args
+  e -> evalError $ "expected combiner in call: " <> showt e
 -- everything other than a list and a symbol is a self-evaluating expression
-eval _ f = pure f
+eval _   f                  = pure f
 
 combine :: Environment -> Combiner -> [Expr] -> Eval Expr
 combine env c@(Combiner { combinerType }) args =
@@ -191,7 +190,8 @@ operate env c args =
       paramBinds <- matchParams closureParams closureRest args
       binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
       inEnvironment closureStaticEnv $ withLocalBindings binds $ do
-        progn env closureBody `catchError` \case
+        env' <- ask
+        progn env' closureBody `catchError` \case
           -- all (return-from)s need to be caught, or else we could bubble out of
           -- the current function! this is contrasted with `block`, which should
           -- let any (return-from)s with a different label to bubble up
