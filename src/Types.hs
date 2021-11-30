@@ -49,7 +49,9 @@ instance TextShow Keyword where
 
 data Closure = Closure
   { closureParams :: [Symbol]
+  , closureOptionalParams :: [(Symbol, Expr)]
   , closureRest :: Maybe Symbol
+  , closureKeywordParams :: Map Symbol Expr
   , closureDynamicEnv :: Maybe Symbol
   , closureStaticEnv :: Environment
   , closureBody :: [Expr]

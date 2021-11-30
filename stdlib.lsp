@@ -2,5 +2,5 @@
           (wrap ($vau () e e)))
 
 ($define! $lambda
-          ($vau (formals . body) env
+          ($vau (formals &rest body) env
                 (wrap (eval `($vau ,formals _ ,@body) env))))
