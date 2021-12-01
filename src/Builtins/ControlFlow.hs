@@ -23,22 +23,13 @@ builtinControlFlow =
   , ("$go", builtinOp primGo)
   ]
 
-truthy :: Expr -> Bool
-truthy = \case
-  LBool b -> b
-  _ -> True
-
-condition :: Environment -> Expr -> Eval Bool
-condition env cond = truthy <$> eval env cond
-
 primIf :: Builtin
-primIf args = do
+primIf [cond, x, y] = do
   env <- ask
-  case args of
-    [cond, x, y] -> do
-      cond' <- condition env cond
-      if cond' then eval env x else eval env y
-    _ -> numArgs "if" 3 args
+  eval env cond >>= \case
+    LBool b -> if b then eval env x else eval env y
+    e       -> evalError $ "$if: expected boolean condition but got " <> renderType e
+primIf args = numArgs "$if" 3 args
 
 primSequence :: Builtin
 primSequence args = do
