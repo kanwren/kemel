@@ -122,7 +122,12 @@ pList = label "list" $ between (symbol "(") (char ')') $ do
     Just neLeading -> optional (symbol "." *> lexeme pExpr) >>= \case
       Nothing -> pure $ LList leading
       Just (LList xs) -> pure $ LList (leading ++ xs)
+      Just (LDottedList xs x) -> pure $ LDottedList (prepend leading xs) x
       Just end -> pure $ LDottedList neLeading end
+  where
+    prepend :: [a] -> NonEmpty a -> NonEmpty a
+    prepend [] (y:|ys) = y:|ys
+    prepend (x:xs) (y:|ys) = x :| (xs ++ y : ys)
 
 pExpr :: Parser Expr
 pExpr = choice
