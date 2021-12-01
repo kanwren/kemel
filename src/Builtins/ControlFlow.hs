@@ -2,6 +2,7 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 module Builtins.ControlFlow (builtinControlFlow) where
 
@@ -15,7 +16,7 @@ import Control.Monad.Except (catchError, throwError)
 import Data.Foldable (foldlM)
 
 import Errors
-import Core (eval, progn, nil)
+import Core (eval, progn, nil, mkBindings)
 import Types
 import Builtins.Utils (builtinApp, builtinOp, Builtin)
 
@@ -100,8 +101,23 @@ primUnless (cond:body) = do
   if not cond' then progn env body else pure nil
 primUnless args = numArgsAtLeast "unless" 1 args
 
+letBody :: Symbol -> [Expr] -> Eval ([Expr], [Expr])
+letBody name []              = numArgs name 1 []
+letBody _    (LList xs:body) = pure (xs, body)
+letBody name (_:_)           = evalError $ showt name <> ": invalid bindings"
+
 primLet :: Builtin
-primLet = undefined
+primLet args = do
+  (xs, body) <- letBody "let" args
+  env <- ask
+  let
+    getBinding (LList [LSymbol name, val]) = (name,) <$> eval env val
+    getBinding (LSymbol name) = pure (name, nil)
+    getBinding _ = evalError "let: invalid variable specification"
+  binds <- mkBindings =<< traverse getBinding xs
+  withLocalBindings binds $ do
+    env' <- ask
+    progn env' body
 
 primProgn :: Builtin
 primProgn body = ask >>= \env -> progn env body
