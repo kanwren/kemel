@@ -22,15 +22,22 @@ vau (params:env:body) = do
 vau args = numArgsAtLeast "$vau" 2 args
 
 define :: Builtin
-define [LSymbol name] = do
-  env <- ask
-  defineVar name nil env
-  pure nil
-define [LSymbol name, x] = do
+define [LIgnore, _] = pure nil
+define [LSymbol name, x] = nil <$ do
   env <- ask
   val <- eval env x
   defineVar name val env
-  pure val
+define [LList xs, LList vs] = nil <$ do
+  let
+    go [] [] = pure ()
+    go (LSymbol x:xs') (v:vs') = do
+      env <- ask
+      val <- eval env v
+      defineVar x val env
+      go xs' vs'
+    go (x:_) (_:_) = evalError $ "$define!: expected symbol, but got " <> renderType x
+    go _ _ = evalError "$define!: mismatched binders and values"
+  go xs vs
 define [e, _] = evalError $ "$define!: expected symbol, but got " <> renderType e
 define args = numArgsBound "$define!" (1, 2) args
 
