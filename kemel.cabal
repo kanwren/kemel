@@ -30,7 +30,6 @@ executable kemel
       Builtins
         Builtins.Bootstrap
         Builtins.ControlFlow
-        Builtins.Definitions
         Builtins.Predicates
         Builtins.Primitives
         Builtins.Utils

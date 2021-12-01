@@ -7,7 +7,6 @@
 module Builtins.ControlFlow (builtinControlFlow) where
 
 import Control.Monad.Reader (ask)
-import TextShow (TextShow(..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Vector (Vector)
@@ -16,27 +15,13 @@ import Control.Monad.Except (catchError, throwError)
 import Data.Foldable (foldlM)
 
 import Errors
-import Core (eval, progn, nil, mkBindings)
+import Core (eval, progn, nil)
 import Types
-import Builtins.Utils (builtinApp, builtinOp, Builtin)
+import Builtins.Utils (builtinOp, Builtin)
 
 builtinControlFlow :: [(Symbol, Expr)]
-builtinControlFlow = builtinConditionals ++ builtinControlStructures
-
-builtinConditionals :: [(Symbol, Expr)]
-builtinConditionals =
+builtinControlFlow =
   [ ("if", builtinOp primIf)
-  , ("and", builtinOp primAnd)
-  , ("or", builtinOp primOr)
-  , ("not", builtinApp primNot)
-  , ("when", builtinOp primWhen)
-  , ("unless", builtinOp primUnless)
-  ]
-
-builtinControlStructures :: [(Symbol, Expr)]
-builtinControlStructures =
-  [ ("progn", builtinOp primProgn)
-  , ("let", builtinOp primLet)
   , ("block", builtinOp primBlock)
   , ("return-from", builtinOp primReturnFrom)
   , ("tagbody", builtinOp primTagbody)
@@ -59,68 +44,6 @@ primIf args = do
       cond' <- condition env cond
       if cond' then eval env x else eval env y
     _ -> numArgs "if" 3 args
-
-primAnd :: Builtin
-primAnd args = do
-  env <- ask
-  let
-    go [] = pure $ LBool True
-    go [x] = eval env x
-    go (x:xs) = do
-      x' <- condition env x
-      if x' then go xs else pure $ LBool False
-  go args
-
-primOr :: Builtin
-primOr args = do
-  env <- ask
-  let
-    go [] = pure $ LBool False
-    go [x] = eval env x
-    go (x:xs) = do
-      x' <- eval env x
-      if truthy x' then pure x' else go xs
-  go args
-
-primNot :: Builtin
-primNot [LBool x] = pure $ LBool $ not x
-primNot [x] = evalError $ "not: expected bool, but got " <> showt x
-primNot args = numArgs "not" 1 args
-
-primWhen :: Builtin
-primWhen (cond:body) = do
-  env <- ask
-  cond' <- condition env cond
-  if cond' then progn env body else pure nil
-primWhen args = numArgsAtLeast "when" 1 args
-
-primUnless :: Builtin
-primUnless (cond:body) = do
-  env <- ask
-  cond' <- condition env cond
-  if not cond' then progn env body else pure nil
-primUnless args = numArgsAtLeast "unless" 1 args
-
-letBody :: Symbol -> [Expr] -> Eval ([Expr], [Expr])
-letBody name []              = numArgs name 1 []
-letBody _    (LList xs:body) = pure (xs, body)
-letBody name (_:_)           = evalError $ showt name <> ": invalid bindings"
-
-primLet :: Builtin
-primLet args = do
-  (xs, body) <- letBody "let" args
-  env <- ask
-  let
-    getBinding (LList [LSymbol name, val]) = (name,) <$> eval env val
-    getBinding (LSymbol name) = pure (name, nil)
-    getBinding _ = evalError "let: invalid variable specification"
-  binds <- mkBindings =<< traverse getBinding xs
-  withLocalBindings binds $ do
-    env' <- ask
-    progn env' body
-
-primProgn :: Builtin
-primProgn body = ask >>= \env -> progn env body
 
 primBlock :: Builtin
 primBlock = \case

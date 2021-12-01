@@ -10,7 +10,6 @@ import Types
 
 import Builtins.Bootstrap (builtinBootstrap)
 import Builtins.ControlFlow (builtinControlFlow)
-import Builtins.Definitions (builtinDefinitions)
 import Builtins.Predicates (builtinPredicates)
 import Builtins.Primitives (builtinPrimitives)
 
@@ -22,7 +21,6 @@ mkBuiltins = do
     ctxCell (name, bi) = (name,) <$> newIORef bi
     builtins =
       [ builtinBootstrap
-      , builtinDefinitions
       , builtinControlFlow
       , builtinPredicates
       , builtinPrimitives

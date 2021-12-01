@@ -50,11 +50,6 @@ primUnwrap [LCombiner c] = pure $ LCombiner $ unwrap c
 primUnwrap [x] = evalError $ "unwrap: expected combiner, but got " <> renderType x
 primUnwrap args = numArgs "unwrap" 1 args
 
--- This is built into the parser, so needs to be here
-quote :: Builtin
-quote [x] = pure x
-quote args = numArgs "quote" 1 args
-
 primCombine :: Builtin
 primCombine [LCombiner combiner, LList operands, LEnv env] = combine env combiner operands
 primCombine [x, LList _, _     ] = evalError $ "combine: expected combiner, but got " <> renderType x
@@ -78,6 +73,5 @@ builtinBootstrap =
   , ("unwrap", builtinApp primUnwrap)
   , ("combine", builtinApp primCombine)
   , ("operate", builtinApp primOperate)
-  , ("quote", builtinOp quote)
   ]
 

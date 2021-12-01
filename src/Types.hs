@@ -17,7 +17,7 @@ import Control.Monad.Reader (ReaderT(..), MonadReader, local, asks)
 import Control.Monad.State (MonadState, StateT(..), state)
 import Data.CaseInsensitive (CI, foldedCase, mk)
 import Data.Default (Default(..))
-import Data.IORef (IORef, readIORef, newIORef, writeIORef)
+import Data.IORef (IORef, readIORef, newIORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
@@ -192,13 +192,4 @@ withLocalBindings bindings act = do
   ctx <- liftIO . readIORef =<< asks getEnvironment
   ctx' <- liftIO $ newIORef $ bindings <> ctx
   let newEnv = Environment ctx'
-  local (const newEnv) act
-
-withRecursiveBindings :: (Environment -> Eval (Map Symbol (IORef Expr))) -> Eval a -> Eval a
-withRecursiveBindings f act = do
-  ctx <- liftIO . readIORef =<< asks getEnvironment
-  ctxRef' <- liftIO $ newIORef ctx
-  let newEnv = Environment ctxRef'
-  ctx' <- (<> ctx) <$> f newEnv
-  liftIO $ writeIORef ctxRef' ctx'
   local (const newEnv) act

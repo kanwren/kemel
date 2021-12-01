@@ -21,6 +21,7 @@ import Errors
 import Core (evalFile)
 import Types
 import Builtins.Utils (builtinApp, Builtin)
+import Data.IORef (newIORef)
 
 unsnoc :: [a] -> Maybe ([a], a)
 unsnoc [] = Nothing
@@ -31,11 +32,7 @@ builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
   [ ("make-new-environment", makeNewEnvironment)
   , ("cons", cons)
-  , ("list", list)
-  , ("list*", listStar)
-  , ("append", append)
-  , ("car", car)
-  , ("cdr", cdr)
+  , ("append", append) -- TODO: remove this
   , ("type-of", typeOf)
   , ("+", iadd)
   , ("-", isub)
@@ -64,26 +61,14 @@ builtinPrimitives = fmap (second builtinApp)
   ]
 
 makeNewEnvironment :: Builtin
-makeNewEnvironment = undefined
+makeNewEnvironment [] = LEnv . Environment <$> liftIO (newIORef mempty)
+makeNewEnvironment args = numArgs "make-new-environment" 0 args
 
 cons :: Builtin
 cons [x, LList y] = pure $ LList (x:y)
 cons [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
 cons [x, y] = pure $ LDottedList (x :| []) y
 cons args = numArgs "cons" 2 args
-
-list :: Builtin
-list xs = pure $ LList xs
-
-listStar :: Builtin
-listStar args =
-  case unsnoc args of
-    Nothing -> numArgsAtLeast "list*" 1 []
-    Just (xs, tl) -> case NonEmpty.nonEmpty xs of
-      Nothing -> pure tl
-      Just xs' -> case tl of
-        LList ys -> pure $ LList (xs ++ ys)
-        y        -> pure  $ LDottedList xs' y
 
 append :: Builtin
 append xs =
@@ -98,18 +83,6 @@ append xs =
   where
     getList (LList l) = pure l
     getList _ = evalError "append: expected list"
-
-car :: Builtin
-car [LList []] = evalError "car: empty list"
-car [LList (x:_)] = pure x
-car [_] = evalError "car: expected list"
-car args = numArgs "car" 1 args
-
-cdr :: Builtin
-cdr [LList []] = evalError "cdr: empty list"
-cdr [LList (_:xs)] = pure $ LList xs
-cdr [_] = evalError "cdr: expected list"
-cdr args = numArgs "cdr" 1 args
 
 typeOf :: Builtin
 typeOf [v] = pure $ LSymbol $ typeToSymbol v
