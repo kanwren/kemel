@@ -12,7 +12,6 @@ module Core where
 import Control.Monad.Except (catchError, throwError)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ask)
-import Data.Foldable (foldlM)
 import Data.Functor ((<&>))
 import Data.IORef (newIORef, readIORef, writeIORef, IORef)
 import Data.List.NonEmpty qualified as NonEmpty
@@ -21,8 +20,6 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Vector (Vector)
-import Data.Vector qualified as Vector
 import TextShow (TextShow(..))
 
 import Errors
@@ -41,11 +38,6 @@ evalFile env contents =
   case parseFile contents of
     Right res -> progn env res
     Left e -> evalError $ "load: parse error: " <> Text.pack e
-
-hasVar :: Symbol -> Environment -> Eval Bool
-hasVar i (Environment envVar) = do
-  mapping <- liftIO $ readIORef envVar
-  pure $ i `Map.member` mapping
 
 lookupVar :: Symbol -> Environment -> Eval Expr
 lookupVar i (Environment envVar) = do
@@ -128,30 +120,6 @@ mkVau dynamicEnvName params body = do
       }
   pure combiner
 
-typep :: Symbol -> Expr -> Expr -> Eval Bool
-typep name v = go
-  where
-    go (LSymbol s) =
-      case symbolToTypePred s of
-        Just p  -> pure $ p v
-        Nothing -> evalError $ showt name <> ": invalid type specifier"
-    go (LList (LSymbol "and":spec)) = and <$> traverse go spec
-    go (LList (LSymbol "or":spec)) = or <$> traverse go spec
-    go (LList (LSymbol "not":spec)) =
-      case spec of
-        [p] -> not <$> go p
-        _ -> evalError $ showt name <> ": expected exactly 1 argument to not, but got " <> showt (length spec)
-    go (LList (LSymbol "integer":spec)) =
-      case v of
-        LInt n ->
-          case spec of
-            [LInt lower] -> pure $ lower <= n
-            [LList [LInt lower]] -> pure $ lower <= n
-            [LInt lower, LInt upper] -> pure $ lower <= n && n <= upper
-            _ -> evalError $ showt name <> ": invalid type specifier: invalid arguments to predicate integer"
-        _ -> pure False
-    go _ = evalError $ showt name <> ": invalid type specifier"
-
 -- Evaluate a list of expressions and return the value of the final expression
 progn :: Environment -> [Expr] -> Eval Expr
 progn env = go
@@ -159,31 +127,6 @@ progn env = go
     go [] = pure nil
     go [x] = eval env x
     go (x:y) = eval env x *> go y
-
-buildTagTable :: [Expr] -> Eval (Map TagName Int, Vector Expr)
-buildTagTable = fmap collect . foldlM go (0, mempty, mempty)
-  where
-    collect (_, tagTable, exprs) = (tagTable, Vector.fromList (reverse exprs))
-    go :: (Int, Map TagName Int, [Expr]) -> Expr -> Eval (Int, Map TagName Int, [Expr])
-    go (i, tagTable, exprs) = \case
-      -- normal symbols
-      LSymbol sym -> pure (i, Map.insert (TagSymbol sym) i tagTable, exprs)
-      LKeyword b -> pure (i, Map.insert (TagKeyword b) i tagTable, exprs)
-      LInt n -> pure (i, Map.insert (TagInt n) i tagTable, exprs)
-      -- NIL symbol
-      LList [] -> pure (i, Map.insert (TagSymbol "nil") i tagTable, exprs)
-      -- lists
-      l@(LList _) -> pure (i + 1, tagTable, l:exprs)
-      l@(LDottedList _ _) -> pure (i + 1, tagTable, l:exprs)
-      e -> evalError $ "tagbody: invalid tag or form type: " <> renderType e
-
-block :: Symbol -> Eval Expr -> Eval Expr
-block blockName a =
-  a `catchError` \case
-    ReturnFrom target val
-      | blockName == target -> pure val
-      -- NOTE: non-matching block names should bubble up
-    e -> throwError e
 
 eval :: Environment -> Expr -> Eval Expr
 eval env (LSymbol sym)      = lookupVar sym env

@@ -18,7 +18,7 @@ import System.Exit qualified as Exit
 import TextShow (TextShow(..))
 
 import Errors
-import Core (evalFile, lookupVar)
+import Core (evalFile)
 import Types
 import Builtins.Utils (builtinApp, Builtin)
 
@@ -29,8 +29,7 @@ unsnoc (x:xs) = first (x:) <$> unsnoc xs
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
-  [ ("lookup", primLookup)
-  , ("make-new-environment", makeNewEnvironment)
+  [ ("make-new-environment", makeNewEnvironment)
   , ("cons", cons)
   , ("list", list)
   , ("list*", listStar)
@@ -63,12 +62,6 @@ builtinPrimitives = fmap (second builtinApp)
   , ("load", load)
   , ("exit", exit)
   ]
-
-primLookup :: Builtin
-primLookup [LSymbol s, LEnv e] = lookupVar s e
-primLookup [LSymbol _, x]      = evalError $ "lookup: expected environment, got " <> renderType x
-primLookup [x,         _]      = evalError $ "lookup: expected symbol to look up, got " <> renderType x
-primLookup args                = numArgs "lookup" 2 args
 
 makeNewEnvironment :: Builtin
 makeNewEnvironment = undefined
