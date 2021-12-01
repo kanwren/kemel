@@ -9,7 +9,6 @@
 
 module Core where
 
-import Control.Monad.Except (catchError, throwError)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ask)
 import Data.Functor ((<&>))
@@ -193,15 +192,7 @@ operate env c args =
       binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
       inEnvironment closureStaticEnv $ withLocalBindings binds $ do
         env' <- ask
-        progn env' closureBody `catchError` \case
-          -- all (return-from)s need to be caught, or else we could bubble out of
-          -- the current function! this is contrasted with `block`, which should
-          -- let any (return-from)s with a different label to bubble up
-          --
-          -- TODO: functions should automatically get a block name
-          ReturnFrom blockName _ -> evalError $ showt name <> ": error returning from block " <> showt (showt blockName) <> ": no such block in scope"
-          TagGo tagName -> evalError $ showt name <> ": error going to tag " <> renderTagName tagName <> ": no such tag in scope"
-          e -> throwError e
+        progn env' closureBody
 
 evalFile :: Environment -> Text -> Eval Expr
 evalFile env contents =

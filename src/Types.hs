@@ -149,25 +149,10 @@ instance TextShow Expr where
 
 newtype Error = Error { getError :: Text }
 
-data TagName
-  = TagInt Integer
-  | TagSymbol Symbol
-  | TagKeyword Keyword
-  deriving (Eq, Ord)
-
-renderTagName :: TagName -> Text
-renderTagName = \case
-  TagInt n -> showt n
-  TagSymbol sym -> showt sym
-  TagKeyword kw -> showt kw
-
 -- | All computations that exceptionally bubble up. Currently, this is only
 -- exceptions, but other forms of control flow may use this mechanism in the
 -- future.
-data Bubble
-  = ReturnFrom Symbol Expr
-  | TagGo TagName
-  | EvalError Error
+newtype Bubble = EvalError Error
 
 -- | A handle to a mapping of variable names to values.
 --

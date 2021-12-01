@@ -23,12 +23,11 @@ import Data.Text.IO qualified as Text.IO
 import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLine)
 import System.Environment (getArgs)
 import System.Exit (ExitCode)
-import TextShow (showt)
 
 import Builtins (mkBuiltins)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Error(..), Eval(..), Bubble(..), renderTagName, Expr(LList))
+import Types (Error(..), Eval(..), Bubble(..), Expr(LList))
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -36,10 +35,6 @@ tryError act = fmap Right act `catchError` (pure . Left)
 handleBubble :: MonadIO m => (a -> m ()) -> Either Bubble a -> m ()
 handleBubble h = \case
   Left (EvalError (Error e)) -> liftIO $ putStrLn $ Text.unpack e
-  Left (ReturnFrom blockName _) -> liftIO $ putStrLn $ Text.unpack $
-    "<toplevel>: error returning from block " <> showt (showt blockName) <> ": no such block in scope"
-  Left (TagGo tagName) -> liftIO $ putStrLn $ Text.unpack $
-    "<toplevel>: error going to tag " <> renderTagName tagName <> ": no such tag in scope"
   Right v -> h v
 
 handleExceptions :: forall m. (MonadIO m, MonadCatch m) => m () -> m ()
