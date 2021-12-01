@@ -1,6 +1,7 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Builtins.Bootstrap (builtinBootstrap) where
 
@@ -27,7 +28,7 @@ define [LSymbol name, x] = LInert <$ do
   env <- ask
   val <- eval env x
   defineVar name val env
-define [LList xs, LList vs] = LInert <$ do
+define [LList xs, rhs] = LInert <$ do
   let
     go [] [] = pure ()
     go (LSymbol x:xs') (v:vs') = do
@@ -37,7 +38,10 @@ define [LList xs, LList vs] = LInert <$ do
       go xs' vs'
     go (x:_) (_:_) = evalError $ "$define!: expected symbol, but got " <> renderType x
     go _ _ = evalError "$define!: mismatched binders and values"
-  go xs vs
+  env <- ask
+  eval env rhs >>= \case
+    LList vs -> go xs vs
+    res -> evalError $ "$define!: expected list of values to assign, but got " <> renderType res
 define [e, _] = evalError $ "$define!: expected symbol, but got " <> renderType e
 define args = numArgsBound "$define!" (1, 2) args
 

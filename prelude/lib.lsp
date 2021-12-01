@@ -30,8 +30,6 @@
                 (let ((env-var (gensym)))
                   (eval `($vau ,formals ,env-var (eval (progn ,@body) ,env-var)) env))))
 
-($define! car ($lambda (head &rest tail) head))
-($define! cdr ($lambda (head &rest tail) tail))
 ($define! cadr ($lambda (xs) (car (cdr xs))))
 
 ($define! apply

@@ -9,13 +9,14 @@ module Builtins.ControlFlow (builtinControlFlow) where
 import Control.Monad.Reader (ask)
 
 import Errors
-import Core (eval)
+import Core (eval, progn)
 import Types
 import Builtins.Utils (builtinOp, Builtin)
 
 builtinControlFlow :: [(Symbol, Expr)]
 builtinControlFlow =
   [ ("$if", builtinOp primIf)
+  , ("$sequence", builtinOp primSequence)
   , ("$block", builtinOp primBlock)
   , ("$return-from", builtinOp primReturnFrom)
   , ("$tagbody", builtinOp primTagbody)
@@ -38,6 +39,11 @@ primIf args = do
       cond' <- condition env cond
       if cond' then eval env x else eval env y
     _ -> numArgs "if" 3 args
+
+primSequence :: Builtin
+primSequence args = do
+  env <- ask
+  progn env args
 
 primBlock :: Builtin
 primBlock = undefined -- TODO

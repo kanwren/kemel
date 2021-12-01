@@ -31,6 +31,8 @@ unsnoc (x:xs) = first (x:) <$> unsnoc xs
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
   [ ("make-environment", makeEnvironment)
+  , ("car", car)
+  , ("cdr", cdr)
   , ("cons", cons)
   , ("append", append) -- TODO: remove this
   , ("type-of", typeOf)
@@ -63,6 +65,18 @@ builtinPrimitives = fmap (second builtinApp)
 makeEnvironment :: Builtin
 makeEnvironment [] = LEnv <$> liftIO newEnvironment
 makeEnvironment args = numArgs "make-environment" 0 args
+
+car :: Builtin
+car [LList []] = evalError "car: empty list"
+car [LList (x:_)] = pure x
+car [_] = evalError "car: expected list"
+car args = numArgs "car" 1 args
+
+cdr :: Builtin
+cdr [LList []] = evalError "cdr: empty list"
+cdr [LList (_:xs)] = pure $ LList xs
+cdr [_] = evalError "cdr: expected list"
+cdr args = numArgs "cdr" 1 args
 
 cons :: Builtin
 cons [x, LList y] = pure $ LList (x:y)
