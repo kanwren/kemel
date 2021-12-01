@@ -37,14 +37,7 @@ unwrap (ApplicativeCombiner c) = pure c
 unwrap x = evalError $ "unwrap: not an applicative: " <> showt x
 
 mkBindings :: [(Symbol, Expr)] -> Eval (Map Symbol (IORef Expr))
-mkBindings pairs = liftIO $ do
-  Map.fromList <$> traverse (\(x, y) -> newIORef y <&> (x,)) pairs
-
-evalFile :: Environment -> Text -> Eval Expr
-evalFile env contents =
-  case parseFile contents of
-    Right res -> progn env res
-    Left e -> evalError $ "load: parse error: " <> Text.pack e
+mkBindings pairs = liftIO $ Map.fromList <$> traverse (\(x, y) -> newIORef y <&> (x,)) pairs
 
 lookupVar :: Symbol -> Environment -> Eval Expr
 lookupVar i (Environment envVar) = do
@@ -126,7 +119,7 @@ mkVau dynamicEnvName params body = do
       , closureStaticEnv = env
       , closureDynamicEnv = dynamicEnvName
       }
-    fun = UserFun closure
+    fun = UserOp closure
   pure $ OperativeCombiner fun
 
 -- Evaluate a list of expressions and return the value of the final expression
@@ -151,11 +144,11 @@ combine :: Environment -> Combiner -> [Expr] -> Eval Expr
 combine env (OperativeCombiner c) args = operate env c args
 combine env (ApplicativeCombiner c) args = traverse (eval env) args >>= combine env c
 
-operate :: Environment -> Fun -> [Expr] -> Eval Expr
+operate :: Environment -> Operative -> [Expr] -> Eval Expr
 operate env c args =
   case c of
-    BuiltinFun f -> inEnvironment env $ f args
-    UserFun Closure{..} -> do
+    BuiltinOp f -> inEnvironment env $ f args
+    UserOp Closure{..} -> do
       let
         name = "<combiner>"
         len = length closureParams
@@ -209,3 +202,9 @@ operate env c args =
           ReturnFrom blockName _ -> evalError $ showt name <> ": error returning from block " <> showt (showt blockName) <> ": no such block in scope"
           TagGo tagName -> evalError $ showt name <> ": error going to tag " <> renderTagName tagName <> ": no such tag in scope"
           e -> throwError e
+
+evalFile :: Environment -> Text -> Eval Expr
+evalFile env contents =
+  case parseFile contents of
+    Right res -> progn env res
+    Left e -> evalError $ "load: parse error: " <> Text.pack e

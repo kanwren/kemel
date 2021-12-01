@@ -7,7 +7,7 @@ import Types
 type Builtin = [Expr] -> Eval Expr
 
 builtinApp :: ([Expr] -> Eval Expr) -> Expr
-builtinApp f = LCombiner $ ApplicativeCombiner $ OperativeCombiner $ BuiltinFun f
+builtinApp f = LCombiner $ ApplicativeCombiner $ OperativeCombiner $ BuiltinOp f
 
 builtinOp :: ([Expr] -> Eval Expr) -> Expr
-builtinOp f = LCombiner $ OperativeCombiner $ BuiltinFun f
+builtinOp f = LCombiner $ OperativeCombiner $ BuiltinOp f

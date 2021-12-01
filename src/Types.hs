@@ -21,13 +21,13 @@ import Data.IORef (IORef, readIORef, newIORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
-import Data.Ratio qualified as Ratio
 import Data.String (IsString(..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import TextShow (TextShow(..))
 import TextShow qualified (fromText, unwordsB, FromTextShow(..))
 
+-- | The data type of all variable names
 data Symbol
   = SimpleSymbol (CI Text)
   | ArbSymbol Text
@@ -47,10 +47,16 @@ newtype Keyword = Keyword { getKeyword :: Symbol }
 instance TextShow Keyword where
   showb (Keyword s) = ":" <> showb s
 
+-- | Specifies whether to bind a variable when calling an operator, and if so,
+-- what name it should get. For example, `($lambda (#ignore) ...)` will take one
+-- parameter, but will not bind it to any names.
 data Binder
   = IgnoreBinder
   | NamedBinder Symbol
 
+-- | The definition of a user-defined vau operative. Holds the parameter
+-- specification, vau body, and the static environment closed over when the vau
+-- is created.
 data Closure = Closure
   { closureParams :: [Binder]
   , closureOptionalParams :: [(Binder, Expr)]
@@ -61,10 +67,15 @@ data Closure = Closure
   , closureBody :: [Expr]
   }
 
--- TODO: rename this type
-data Fun = BuiltinFun ([Expr] -> Eval Expr) | UserFun !Closure
+-- | A callable operative, which is either a builtin defined from Haskell (a
+-- plain Haskell function) or a user-defined vau closure.
+data Operative = BuiltinOp ([Expr] -> Eval Expr) | UserOp !Closure
+
+-- | A combiner at the head of a call is either _operative_ or _applicative_;
+-- applicatives will first evaluate their arguments before calling the
+-- underlying combiner.
 data Combiner
-  = OperativeCombiner Fun
+  = OperativeCombiner Operative
   | ApplicativeCombiner Combiner
 
 instance TextShow Combiner where
@@ -118,10 +129,6 @@ symbolToTypePred = \case
   "combiner" -> pure $ \case LCombiner{} -> True; _ -> False
   _ -> Nothing
 
-renderRatio :: Rational -> Text
-renderRatio n = showt num <> "/" <> showt den
-  where (num, den) = (Ratio.numerator n, Ratio.denominator n)
-
 instance TextShow Expr where
   showb = \case
     LIgnore -> "#ignore"
@@ -144,7 +151,6 @@ newtype Error = Error { getError :: Text }
 
 data TagName
   = TagInt Integer
-  | TagRatio Rational
   | TagSymbol Symbol
   | TagKeyword Keyword
   deriving (Eq, Ord)
@@ -152,35 +158,47 @@ data TagName
 renderTagName :: TagName -> Text
 renderTagName = \case
   TagInt n -> showt n
-  TagRatio n -> renderRatio n
   TagSymbol sym -> showt sym
   TagKeyword kw -> showt kw
 
+-- | All computations that exceptionally bubble up. Currently, this is only
+-- exceptions, but other forms of control flow may use this mechanism in the
+-- future.
 data Bubble
   = ReturnFrom Symbol Expr
   | TagGo TagName
   | EvalError Error
 
+-- | A handle to a mapping of variable names to values.
+--
+-- Both the environment and the values in it must be wrapped in `IORef`s.
+-- If the environment is not in an `IORef`, then a function `f` defined before a
+-- function `g` would not be able to see the later addition of the new function,
+-- despite the fact that both are in the global scope. If the values are not
+-- wrapped in `IORef`s, then changes to variables captured in sub-environments
+-- (for example, global variables captured from closures), would not be visible
+-- to the rest of the global scope.
 newtype Environment = Environment { getEnvironment :: IORef (Map Symbol (IORef Expr)) }
 
 -- Symbol generation
 
+-- | The state which is used to produce new symbols for `gensym`.
 newtype SymbolGenerator = SymbolGenerator { getSymGen :: Int }
-
-nextSym :: SymbolGenerator -> (Symbol, SymbolGenerator)
-nextSym (SymbolGenerator n) = (SimpleSymbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
 
 instance Default SymbolGenerator where
   def = SymbolGenerator 0
 
-class SymGen m where
-  genSym :: m Symbol
-
-instance MonadState SymbolGenerator m => SymGen m where
-  genSym = state nextSym
+-- | Generate a new symbol, modifying the symbol generator in the computation's
+-- state.
+genSym :: MonadState SymbolGenerator m => m Symbol
+genSym = state nextSym
+  where
+    nextSym :: SymbolGenerator -> (Symbol, SymbolGenerator)
+    nextSym (SymbolGenerator n) = (SimpleSymbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
 
 -- Eval
 
+-- | The monad for evaluating expressions.
 newtype Eval a = Eval { runEval :: Environment -> SymbolGenerator -> IO (Either Bubble a, SymbolGenerator) }
   deriving
     ( Functor, Applicative, Monad
@@ -191,9 +209,12 @@ newtype Eval a = Eval { runEval :: Environment -> SymbolGenerator -> IO (Either 
     )
     via ReaderT Environment (ExceptT Bubble (StateT SymbolGenerator IO))
 
+-- | Run an evaluation under a different environment than the current one.
 inEnvironment :: Environment -> Eval a -> Eval a
 inEnvironment ctx' = local (const ctx')
 
+-- | Run a computation in a new environment with extra bindings, such as when an
+-- operative is run.
 withLocalBindings :: Map Symbol (IORef Expr) -> Eval a -> Eval a
 withLocalBindings bindings act = do
   ctx <- liftIO . readIORef =<< asks getEnvironment
