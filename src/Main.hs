@@ -11,10 +11,9 @@ import Control.Monad.Catch (catches, Handler(..), MonadCatch)
 import Control.Monad.Error.Class (catchError)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class
-import Control.Monad.Reader (ask)
+import Control.Monad.Reader (ask, local)
 import Control.Monad.Trans (lift)
 import Data.Attoparsec.Text (parse, IResult(..))
-import Data.Default (def)
 import Data.Foldable (traverse_)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -24,10 +23,10 @@ import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLin
 import System.Environment (getArgs)
 import System.Exit (ExitCode)
 
-import Builtins (mkBuiltins)
+import Builtins (loadPrelude)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Error(..), Eval(..), Bubble(..), Expr(..))
+import Types (Error(..), Eval(..), Bubble(..), Expr(..), runProgram)
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -43,10 +42,13 @@ handleExceptions = flip catches
   , Handler $ \(e :: SomeException) -> liftIO $ liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
   ]
 
+-- | Load the prelude and execute a program
+loadAndRun :: Eval a -> IO (Either Bubble a)
+loadAndRun act = runProgram (loadPrelude >>= \env' -> local (const env') act)
+
 repl :: IO ()
 repl = do
-  builtins <- mkBuiltins
-  (res, _) <- runEval (runInputT defaultSettings (loop Nothing)) builtins def
+  res <- loadAndRun $ runInputT defaultSettings $ loop Nothing
   handleBubble (\_ -> pure ()) res
   where
     run :: [Expr] -> InputT Eval ()
@@ -77,9 +79,8 @@ repl = do
 runFile :: String -> IO ()
 runFile path = do
   contents <- Text.IO.readFile path
-  builtins <- mkBuiltins
   handleExceptions $ do
-    (res, _) <- runEval (ask >>= \env -> evalFile env contents) builtins def
+    res <- loadAndRun $ do env <- ask; evalFile env contents
     handleBubble (\_ -> pure ()) res
 
 main :: IO ()

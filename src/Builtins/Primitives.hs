@@ -22,7 +22,6 @@ import Errors
 import Core (evalFile)
 import Types
 import Builtins.Utils (builtinApp, Builtin)
-import Data.IORef (newIORef)
 
 unsnoc :: [a] -> Maybe ([a], a)
 unsnoc [] = Nothing
@@ -31,7 +30,7 @@ unsnoc (x:xs) = first (x:) <$> unsnoc xs
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
-  [ ("make-new-environment", makeNewEnvironment)
+  [ ("make-environment", makeEnvironment)
   , ("cons", cons)
   , ("append", append) -- TODO: remove this
   , ("type-of", typeOf)
@@ -61,9 +60,9 @@ builtinPrimitives = fmap (second builtinApp)
   , ("exit", exit)
   ]
 
-makeNewEnvironment :: Builtin
-makeNewEnvironment [] = LEnv . Environment <$> liftIO (newIORef mempty)
-makeNewEnvironment args = numArgs "make-new-environment" 0 args
+makeEnvironment :: Builtin
+makeEnvironment [] = LEnv <$> liftIO newEnvironment
+makeEnvironment args = numArgs "make-environment" 0 args
 
 cons :: Builtin
 cons [x, LList y] = pure $ LList (x:y)

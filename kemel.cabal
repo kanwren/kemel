@@ -19,6 +19,8 @@ maintainer:         nprindle18@gmail.com
 category:           Language
 extra-source-files: CHANGELOG.md
 
+data-files: prelude/**/*.lsp
+
 executable kemel
     main-is:          Main.hs
 
@@ -34,6 +36,7 @@ executable kemel
         Builtins.Primitives
         Builtins.Utils
       Errors
+      Paths_kemel
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

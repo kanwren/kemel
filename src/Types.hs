@@ -171,6 +171,9 @@ newtype Bubble = EvalError Error
 -- to the rest of the global scope.
 newtype Environment = Environment { getEnvironment :: IORef (Map Symbol (IORef Expr)) }
 
+newEnvironment :: IO Environment
+newEnvironment = Environment <$> newIORef mempty
+
 -- Symbol generation
 
 -- | The state which is used to produce new symbols for `gensym`.
@@ -199,6 +202,12 @@ newtype Eval a = Eval { runEval :: Environment -> SymbolGenerator -> IO (Either 
     , MonadIO
     )
     via ReaderT Environment (ExceptT Bubble (StateT SymbolGenerator IO))
+
+runProgram :: Eval a -> IO (Either Bubble a)
+runProgram program = do
+  env <- newEnvironment
+  (res, _) <- runEval program env def
+  pure res
 
 -- | Run an evaluation under a different environment than the current one.
 inEnvironment :: Environment -> Eval a -> Eval a

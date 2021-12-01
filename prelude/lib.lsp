@@ -3,6 +3,8 @@
 ; and
 ; or
 ; not
+; when
+; unless
 ; cond
 ; $set!
 ; $get
@@ -32,9 +34,15 @@
 ($define! cdr ($lambda (head &rest tail) tail))
 ($define! cadr ($lambda (xs) (car (cdr xs))))
 
+($define! apply
+         ($lambda (op args &optional env)
+                  (eval
+                    `(,(unwrap op) ,@args)
+                    ($if (null? env) (make-environment) env))))
+
 ($define! map
           ($lambda (f xs)
-                   (if (null? xs)
+                   ($if (null? xs)
                      ()
                      (cons (f (car xs)) (map f (cdr xs))))))
 
