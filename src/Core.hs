@@ -141,13 +141,13 @@ eval _   f                  = pure f
 combine :: Environment -> Combiner -> [Expr] -> Eval Expr
 combine env c@(Combiner { combinerType }) args =
   case combinerType of
-    OperativeCombiner -> operate env c args
+    OperativeCombiner   -> operate env c args
     ApplicativeCombiner -> traverse (eval env) args >>= combine env (unwrap c)
 
 operate :: Environment -> Combiner -> [Expr] -> Eval Expr
 operate env c args =
   case combinerFun c of
-    BuiltinFun f -> f args
+    BuiltinFun f -> inEnvironment env $ f args
     UserFun Closure{..} -> do
       let
         name = "<combiner>"
