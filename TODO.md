@@ -1,5 +1,5 @@
 - Move more things out of the builtins:
-  - `progn`
+  - `$sequence`
   - `append` (currently needed for splice syntax, probably write `$lambda` etc. without splices to begin with until `append` is implemented)
 - Re-implement control flow (like `tagbody`, `block`, etc.) in terms of delimited continuations
 - Re-implement exceptions in terms of delimited continuations
