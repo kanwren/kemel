@@ -9,8 +9,8 @@
 
 ($define! nil ())
 
-($define! quote ($vau (x) _ x))
-($define! list (wrap ($vau (&rest xs) _ xs))) ; $lambda (&rest xs) xs
+($define! quote ($vau (x) #ignore x))
+($define! list (wrap ($vau (&rest xs) #ignore xs))) ; $lambda (&rest xs) xs
 ($define! list* nil) ; TODO
 
 ; TODO: move progn out of builtins
@@ -21,7 +21,7 @@
 
 ($define! $lambda
           ($vau (formals &rest body) env
-                (wrap (eval `($vau ,formals _ ,@body) env))))
+                (wrap (eval `($vau ,formals #ignore ,@body) env))))
 
 ($define! $macro
           ($vau (formals &rest body) env

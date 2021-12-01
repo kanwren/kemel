@@ -47,12 +47,16 @@ newtype Keyword = Keyword { getKeyword :: Symbol }
 instance TextShow Keyword where
   showb (Keyword s) = ":" <> showb s
 
+data Binder
+  = IgnoreBinder
+  | NamedBinder Symbol
+
 data Closure = Closure
-  { closureParams :: [Symbol]
-  , closureOptionalParams :: [(Symbol, Expr)]
-  , closureRest :: Maybe Symbol
+  { closureParams :: [Binder]
+  , closureOptionalParams :: [(Binder, Expr)]
+  , closureRest :: Maybe Binder
   , closureKeywordParams :: Map Symbol Expr
-  , closureDynamicEnv :: Maybe Symbol
+  , closureDynamicEnv :: Binder
   , closureStaticEnv :: Environment
   , closureBody :: [Expr]
   }
@@ -69,7 +73,8 @@ instance TextShow Combiner where
     ApplicativeCombiner{} -> "<applicative>"
 
 data Expr
-  = LInt Integer
+  = LIgnore
+  | LInt Integer
   | LBool Bool
   | LKeyword Keyword
   | LString Text
@@ -85,6 +90,7 @@ renderType = showt . typeToSymbol
 
 typeToSymbol :: Expr -> Symbol
 typeToSymbol = SimpleSymbol . \case
+  LIgnore -> "ignore"
   LInt _ -> "integer"
   LBool _ -> "bool"
   LKeyword _ -> "keyword"
@@ -98,6 +104,7 @@ typeToSymbol = SimpleSymbol . \case
 
 symbolToTypePred :: Symbol -> Maybe (Expr -> Bool)
 symbolToTypePred = \case
+  "ignore" -> pure $ \case LIgnore -> True; _ -> False
   "number" -> pure $ \case LInt _ -> True; _ -> False
   "integer" -> pure $ \case LInt _ -> True; _ -> False
   "bool" -> pure $ \case LBool _ -> True; _ -> False
@@ -117,6 +124,7 @@ renderRatio n = showt num <> "/" <> showt den
 
 instance TextShow Expr where
   showb = \case
+    LIgnore -> "#ignore"
     LInt n -> showb n
     LBool False -> "#f"
     LBool True -> "#t"

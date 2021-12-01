@@ -62,44 +62,50 @@ defineVar i val (Environment envVar) = do
       liftIO $ writeIORef envVar $ Map.insert i ref mapping
     Just ref -> liftIO $ writeIORef ref val
 
-mkVau :: Maybe Symbol -> Expr -> [Expr] -> Eval Combiner
+mkVau :: Binder -> Expr -> [Expr] -> Eval Combiner
 mkVau dynamicEnvName params body = do
   let
     toError :: Text -> Eval a
     toError e = evalError $ "$vau" <> ": " <> e
 
-    parseArgs :: Expr -> Eval ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr)
+    parseArgs :: Expr -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
     parseArgs (LList ps) = mainArgs [] ps
     parseArgs t = toError $ "invalid argument list: expected list, but got " <> renderType t
     -- Parse the main arguments from the parameter list
-    mainArgs :: [Symbol] -> [Expr] -> Eval ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr)
+    mainArgs :: [Binder] -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
     mainArgs ma []                         = pure (reverse ma, [], Nothing, mempty)
     mainArgs ma (LSymbol "&optional":spec) = optionalArgs (reverse ma, []) spec
     mainArgs ma (LSymbol "&rest":spec)     = restArgs (reverse ma, []) spec
     mainArgs ma (LSymbol "&key":spec)      = keyArgs (reverse ma, [], Nothing, mempty) spec
-    mainArgs ma (LSymbol s:xs)             = mainArgs (s:ma) xs
+    mainArgs ma (LSymbol s:xs)             = mainArgs (NamedBinder s:ma) xs
+    mainArgs ma (LIgnore:xs)               = mainArgs (IgnoreBinder:ma) xs
     mainArgs _  (x:_)                      = toError $ "invalid argument list: invalid parameter " <> showt x
     -- Parse the optional arguments from the parameter list
-    optionalArgs :: ([Symbol], [(Symbol, Expr)]) -> [Expr] -> Eval ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr)
+    optionalArgs :: ([Binder], [(Binder, Expr)]) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
     optionalArgs (ma, oa) []                        = pure (ma, reverse oa, Nothing, mempty)
     optionalArgs _        (LSymbol "&optional":_)   = toError "&optional not allowed here"
     optionalArgs (ma, oa) (LSymbol "&rest":spec)    = restArgs (ma, reverse oa) spec
     optionalArgs (ma, oa) (LSymbol "&key":spec)     = keyArgs (ma, reverse oa, Nothing, mempty) spec
-    optionalArgs (ma, oa) (LSymbol s:xs)            = optionalArgs (ma, (s, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LSymbol s]:xs)    = optionalArgs (ma, (s, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LSymbol s, v]:xs) = do env <- ask; v' <- eval env v; optionalArgs (ma, (s, v'):oa) xs
+    optionalArgs (ma, oa) (LSymbol s:xs)            = optionalArgs (ma, (NamedBinder s, nil):oa) xs
+    optionalArgs (ma, oa) (LList [LSymbol s]:xs)    = optionalArgs (ma, (NamedBinder s, nil):oa) xs
+    optionalArgs (ma, oa) (LList [LSymbol s, v]:xs) = do env <- ask; v' <- eval env v; optionalArgs (ma, (NamedBinder s, v'):oa) xs
+    optionalArgs (ma, oa) (LIgnore:xs)              = optionalArgs (ma, (IgnoreBinder, nil):oa) xs
+    optionalArgs (ma, oa) (LList [LIgnore]:xs)      = optionalArgs (ma, (IgnoreBinder, nil):oa) xs
+    optionalArgs (ma, oa) (LList [LIgnore, v]:xs)   = do env <- ask; v' <- eval env v; optionalArgs (ma, (IgnoreBinder, v'):oa) xs
     optionalArgs _        (x:_)                     = toError $ "invalid argument list: invalid parameter " <> showt x
     -- Parse the rest argument from the parameter list
-    restArgs :: ([Symbol], [(Symbol, Expr)]) -> [Expr] -> Eval ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr)
+    restArgs :: ([Binder], [(Binder, Expr)]) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
     restArgs (ma, oa) []                               = pure (ma, oa, Nothing, mempty)
     restArgs _        [LSymbol "&optional"]            = toError "&optional not allowed here"
     restArgs _        [LSymbol "&rest"]                = toError "&rest not allowed here"
-    restArgs (ma, oa) [LSymbol s]                      = pure (ma, oa, Just s, mempty)
-    restArgs (ma, oa) (LSymbol s:LSymbol "&key":rest)  = keyArgs (ma, oa, Just s, mempty) rest
+    restArgs (ma, oa) [LSymbol s]                      = pure (ma, oa, Just (NamedBinder s), mempty)
+    restArgs (ma, oa) [LIgnore]                        = pure (ma, oa, Just IgnoreBinder, mempty)
+    restArgs (ma, oa) (LSymbol s:LSymbol "&key":rest)  = keyArgs (ma, oa, Just (NamedBinder s), mempty) rest
+    restArgs (ma, oa) (LIgnore:LSymbol "&key":rest)    = keyArgs (ma, oa, Just IgnoreBinder, mempty) rest
     restArgs _        (LSymbol _:x:_)                  = toError $ "unexpected extra argument after rest parameter: " <> showt x
     restArgs _        (x:_)                            = toError $ "invalid argument list: invalid parameter " <> showt x
     -- Parse the key arguments from the parameter list
-    keyArgs :: ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr) -> [Expr] -> Eval ([Symbol], [(Symbol, Expr)], Maybe Symbol, Map Symbol Expr)
+    keyArgs :: ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
     keyArgs (ma, oa, r, ka) []                         = pure (ma, oa, r, ka)
     keyArgs _               (LSymbol "&optional":_)    = toError "&optional not allowed here"
     keyArgs _               (LSymbol "&rest":_)        = toError "&rest not allowed here"
@@ -157,14 +163,20 @@ operate env c args =
           if isJust closureRest
           then numArgsAtLeast name len args
           else numArgs name len args
-        matchParams :: [Symbol] -> [(Symbol, Expr)] -> Maybe Symbol -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
+        matchParams :: [Binder] -> [(Binder, Expr)] -> Maybe Binder -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
         matchParams ps os r ks as = reverse <$> matchParams' [] ps os r ks as
-        matchParams' :: [(Symbol, Expr)] -> [Symbol] -> [(Symbol, Expr)] -> Maybe Symbol -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
-        matchParams' bs (m:ms) os          r        ks (a:as) = matchParams' ((m,a):bs) ms os r ks as
-        matchParams' _  (_:_)  _           _        _  []     = argsError -- not enough args
-        matchParams' bs []     ((o, _):os) r        ks (a:as) = matchParams' ((o,a):bs) [] os r ks as
-        matchParams' bs []     ((o, v):os) r        ks []     = matchParams' ((o, v):bs) [] os r ks []
-        matchParams' bs []     []          (Just r) ks as
+        matchParams' :: [(Symbol, Expr)] -> [Binder] -> [(Binder, Expr)] -> Maybe Binder -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
+        matchParams' bs (IgnoreBinder:ms)  os                      r        ks (_:as) = matchParams' bs ms os r ks as
+        matchParams' bs (NamedBinder m:ms) os                      r        ks (a:as) = matchParams' ((m,a):bs) ms os r ks as
+        matchParams' _  (_:_)              _                       _        _  []     = argsError -- not enough args
+        matchParams' bs []                 ((NamedBinder o, _):os) r        ks (a:as) = matchParams' ((o,a):bs) [] os r ks as
+        matchParams' bs []                 ((IgnoreBinder, _):os)  r        ks (_:as) = matchParams' bs [] os r ks as
+        matchParams' bs []                 ((NamedBinder o, v):os) r        ks []     = matchParams' ((o, v):bs) [] os r ks []
+        matchParams' bs []                 ((IgnoreBinder, _):os)  r        ks []     = matchParams' bs [] os r ks []
+        matchParams' bs []                 []                      (Just IgnoreBinder) ks as
+          | null ks = pure bs
+          | otherwise = (bs ++) <$> matchParamsKeywords ks as
+        matchParams' bs []                 []                      (Just (NamedBinder r)) ks as
           | null ks = pure $ (r, LList as):bs
           | otherwise = (((r, LList as):bs) ++) <$> matchParamsKeywords ks as
         matchParams' bs []     []          Nothing  ks as
@@ -180,7 +192,10 @@ operate env c args =
             go _ (LKeyword _:_) = evalError $ showt name <> ": expected value for keyword argument"
             go _ (x:_) = evalError $ showt name <> ": unexpected parameter in keyword arguments: " <> showt x
         dynamicEnvBinding :: Maybe (Symbol, Expr)
-        dynamicEnvBinding = (,LEnv env) <$> closureDynamicEnv
+        dynamicEnvBinding =
+          case closureDynamicEnv of
+            IgnoreBinder -> Nothing
+            NamedBinder n -> Just (n, LEnv env)
       paramBinds <- matchParams closureParams closureOptionalParams closureRest closureKeywordParams args
       binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
       inEnvironment closureStaticEnv $ withLocalBindings binds $ do

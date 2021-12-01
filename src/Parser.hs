@@ -40,6 +40,9 @@ label l f = f <?> l
 pNumber :: Parser Expr
 pNumber = label "number literal" $ LInt <$> signed decimal
 
+pIgnore :: Parser Expr
+pIgnore = label "ignore literal" $ string "#ignore" $> LIgnore
+
 pBool :: Parser Expr
 pBool = label "bool literal" $ fmap LBool $ (string "#f" $> False) <|> (string "#t" $> True)
 
@@ -127,6 +130,7 @@ pExpr = choice
   , pList
   , pString
   , pKeyword
+  , pIgnore
   , pBool
   , pNumber
   , pSymbol
@@ -155,6 +159,7 @@ pBackquoteExpr = do
       , pListBackquoteed
       , quote <$> pString
       , quote <$> pKeyword
+      , quote <$> pIgnore
       , quote <$> pBool
       , quote <$> pNumber
       , quote <$> pSymbol

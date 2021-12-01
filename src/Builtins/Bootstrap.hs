@@ -15,8 +15,8 @@ import Builtins.Utils (builtinOp, builtinApp, Builtin)
 vau :: Builtin
 vau (params:env:body) = do
   envName <- case env of
-    LSymbol "_" -> pure Nothing
-    LSymbol s -> pure $ Just s
+    LIgnore   -> pure IgnoreBinder
+    LSymbol s -> pure $ NamedBinder s
     x -> evalError $ "$vau: invalid environment name: " <> showt x
   LCombiner <$> mkVau envName params body
 vau args = numArgsAtLeast "$vau" 2 args
