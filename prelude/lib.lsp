@@ -19,7 +19,9 @@
                 ($let ((env-var (gensym)))
                   (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env))))
 
-($define! cadr ($lambda (xs) (car (cdr xs))))
+($define! car ($lambda ((x . #ignore))  x))
+($define! cdr ($lambda ((#ignore . xs)) xs))
+($define! cadr ($lambda ((#ignore . (x . #ignore))) x))
 
 ($define! not? ($lambda (x) ($if x #f #t)))
 
