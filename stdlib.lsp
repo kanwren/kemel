@@ -9,7 +9,7 @@
 
 ($define! nil ())
 
-($define! quote ($vau (x) #ignore x))
+($define! $quote ($vau (x) #ignore x))
 ($define! list (wrap ($vau (&rest xs) #ignore xs))) ; $lambda (&rest xs) xs
 ($define! list* nil) ; TODO
 
@@ -38,13 +38,13 @@
                      ()
                      (cons (f (car xs)) (map f (cdr xs))))))
 
-($define! let
+($define! $let
           ($vau (bindings &rest body) env
                 (eval
                   `(($lambda ,(map car bindings) ,@body) ,@(map cadr bindings))
                   env)))
 
-($define! cond
+($define! $cond
           ($vau (&rest conds) env
                 (eval
                   (foldr

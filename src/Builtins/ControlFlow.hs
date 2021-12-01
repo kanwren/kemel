@@ -15,11 +15,11 @@ import Builtins.Utils (builtinOp, Builtin)
 
 builtinControlFlow :: [(Symbol, Expr)]
 builtinControlFlow =
-  [ ("if", builtinOp primIf)
-  , ("block", builtinOp primBlock)
-  , ("return-from", builtinOp primReturnFrom)
-  , ("tagbody", builtinOp primTagbody)
-  , ("go", builtinOp primGo)
+  [ ("$if", builtinOp primIf)
+  , ("$block", builtinOp primBlock)
+  , ("$return-from", builtinOp primReturnFrom)
+  , ("$tagbody", builtinOp primTagbody)
+  , ("$go", builtinOp primGo)
   ]
 
 truthy :: Expr -> Bool
