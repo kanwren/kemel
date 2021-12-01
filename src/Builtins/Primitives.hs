@@ -8,7 +8,7 @@ module Builtins.Primitives (builtinPrimitives) where
 import Control.Monad (zipWithM)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ask)
-import Data.Bifunctor (second, first)
+import Data.Bifunctor (second)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -23,16 +23,10 @@ import Core (evalFile)
 import Types
 import Builtins.Utils (builtinApp, Builtin)
 
-unsnoc :: [a] -> Maybe ([a], a)
-unsnoc [] = Nothing
-unsnoc [x] = Just ([], x)
-unsnoc (x:xs) = first (x:) <$> unsnoc xs
-
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
   [ ("make-environment", makeEnvironment)
   , ("cons", cons)
-  , ("append", append) -- TODO: remove this
   , ("type-of", typeOf)
   , ("+", iadd)
   , ("-", isub)
@@ -69,20 +63,6 @@ cons [x, LList y] = pure $ LList (x:y)
 cons [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
 cons [x, y] = pure $ LDottedList (x :| []) y
 cons args = numArgs "cons" 2 args
-
-append :: Builtin
-append xs =
-  case unsnoc xs of
-    Nothing -> pure $ LList []
-    Just (_, LList _) -> LList . concat <$> traverse getList xs
-    Just (ys, z) -> do
-      res <- concat <$> traverse getList ys
-      case NonEmpty.nonEmpty res of
-        Nothing -> pure z
-        Just ys' -> pure $ LDottedList ys' z
-  where
-    getList (LList l) = pure l
-    getList _ = evalError "append: expected list"
 
 typeOf :: Builtin
 typeOf [v] = pure $ LSymbol $ typeToSymbol v

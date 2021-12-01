@@ -1,6 +1,4 @@
-- Move more things out of the builtins:
-  - `$sequence`
-  - `append` (currently needed for splice syntax, probably write `$lambda` etc. without splices to begin with until `append` is implemented)
+- Make splicing more efficient - `append` shouldn't be called for cases where `cons` or `list*` would suffice
 - Re-implement control flow (like `tagbody`, `block`, etc.) in terms of delimited continuations
 - Re-implement exceptions in terms of delimited continuations
 - Tail call optimization if possible

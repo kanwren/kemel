@@ -1,11 +1,66 @@
 ($define! nil ())
 
-($define! $quote ($vau (x) #ignore x))
-($define! list (wrap ($vau xs #ignore xs))) ; $lambda xs xs
-($define! list* nil) ; TODO
+; TODO: decide whether or not to use this for sequence, since providing it as a
+; primitive is probably significantly more efficient
+($define! $_sequence
+          ((wrap
+             ($vau (do-both) #ignore
+                   (do-both
+                     ; recursive helper - sequence nonempty list of actions
+                     ($define! go
+                               ($vau (first . rest) env
+                                     ($if (null? rest)
+                                          (eval first env)
+                                          (do-both (eval first env)
+                                                   (eval (cons go rest) env)))))
+                     ; return a vau that checks the base case and recurses
+                     ($vau body env
+                           ($if (null? body)
+                                #inert
+                                (eval (cons go body) env))))))
+           ; `((wrap ($vau #ignore #ignore *b*)) *a*)` can is used to sequence
+           ; two actions `*a*` and `*b*`
+           ($vau (a b) env
+                 ((wrap ($vau #ignore #ignore (eval b env))) (eval a env)))))
 
-; TODO: move $sequence out of builtins
-; TODO: move append out of builtins; currently needed to bootstrap the splicing syntax
+($define! $quote ($vau (x) #ignore x))
+
+($define! car  (wrap ($vau ((x       . #ignore      )) #ignore x )))
+($define! cdr  (wrap ($vau ((#ignore . xs           )) #ignore xs)))
+($define! cadr (wrap ($vau ((#ignore . (x . #ignore))) #ignore x )))
+
+($define! list (wrap ($vau xs #ignore xs))) ; $lambda xs xs
+($define! list*
+          (wrap
+            ($vau args #ignore
+                  ($sequence
+                    ($define! go
+                              (wrap
+                                ($vau ((x . xs)) #ignore
+                                      ($if (null? xs)
+                                           x
+                                           (cons x (go xs))))))
+                    (go args)))))
+
+($define! append
+          (wrap ($vau (xs ys) #ignore
+                      ($if (null? xs)
+                        ys
+                        (cons (car xs) (append (cdr xs) ys))))))
+
+; Redefine $vau to be able to take an arbitrary body, not just a single
+; expression
+($define! $vau
+          ((wrap
+             ($vau ($vau) #ignore
+                   ($vau (formals env-name . body) env
+                         (eval
+                           `(,$vau ,formals ,env-name
+                                   ,($if (> (length body) 1)
+                                         (cons $sequence body)
+                                         (car body)))
+                           env))))
+          $vau))
 
 ($define! get-current-environment
           (wrap ($vau () e e)))
@@ -18,10 +73,6 @@
           ($vau (formals . body) env
                 ($let ((env-var (gensym)))
                   (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env))))
-
-($define! car ($lambda ((x . #ignore))  x))
-($define! cdr ($lambda ((#ignore . xs)) xs))
-($define! cadr ($lambda ((#ignore . (x . #ignore))) x))
 
 ($define! not? ($lambda (x) ($if x #f #t)))
 
@@ -89,7 +140,10 @@
 ($define! $provide!
           ($macro (symbols . body)
                   (the list symbols) ; can't be single bare variable
-                  `(,$define! ,symbols (,$let () (,$sequence ,@body) (,list ,@symbols)))))
+                  `(,$define! ,symbols
+                              (,$let ()
+                                     (,$sequence ,@body)
+                                     (,list ,@symbols)))))
 
 ($define! $cond
           ($vau conds env

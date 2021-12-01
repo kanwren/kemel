@@ -14,14 +14,16 @@ import Errors
 import Types
 import Builtins.Utils (builtinOp, builtinApp, Builtin)
 
+-- NOTE: this is later redefined in the prelude to be able to compensate for
+-- automatically $sequencing bodies
 vau :: Builtin
-vau (params:env:body) = do
+vau [params, env, body] = do
   envName <- case env of
     LIgnore   -> pure IgnoreBinder
     LSymbol s -> pure $ NamedBinder s
     x -> evalError $ "$vau: invalid environment name: " <> showt x
   LCombiner <$> mkVau envName params body
-vau args = numArgsAtLeast "$vau" 2 args
+vau args = numArgs "$vau" 3 args
 
 define :: Builtin
 define [bs, ps] = LInert <$ do

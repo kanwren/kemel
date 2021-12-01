@@ -114,7 +114,7 @@ matchParams name tree args = do
             (x:xs) -> bind b (LDottedList (x:|xs) p)
     go (ParamDottedList _ _) x = toError $ "expected a list to unpack, but got " <> renderType x
 
-mkVau :: Binder -> Expr -> [Expr] -> Eval Combiner
+mkVau :: Binder -> Expr -> Expr -> Eval Combiner
 mkVau dynamicEnvName params body = do
   paramTree <- parseParamTree "$vau" params
   env <- ask
@@ -156,18 +156,16 @@ operate env c args =
     BuiltinOp f -> inEnvironment env $ f args
     UserOp Closure{..} -> do
       let
-        name = "<combiner>"
-
         dynamicEnvBinding :: Maybe (Symbol, Expr)
         dynamicEnvBinding =
           case closureDynamicEnv of
             IgnoreBinder -> Nothing
             NamedBinder n -> Just (n, LEnv env)
-      paramBinds <- matchParams name closureParams (LList args)
+      paramBinds <- matchParams "<combiner>" closureParams (LList args)
       binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
       inEnvironment closureStaticEnv $ withLocalBindings binds $ do
         env' <- ask
-        progn env' closureBody
+        eval env' closureBody
 
 evalFile :: Environment -> Text -> Eval Expr
 evalFile env contents =

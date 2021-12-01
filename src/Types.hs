@@ -66,7 +66,7 @@ data Closure = Closure
   { closureParams :: ParamTree
   , closureDynamicEnv :: Binder
   , closureStaticEnv :: Environment
-  , closureBody :: [Expr]
+  , closureBody :: Expr
   }
 
 -- | A callable operative, which is either a builtin defined from Haskell (a
