@@ -29,6 +29,13 @@ import Types
 nil :: Expr
 nil = LList []
 
+wrap :: Combiner -> Eval Combiner
+wrap c = pure $ ApplicativeCombiner c
+
+unwrap :: Combiner -> Eval Combiner
+unwrap (ApplicativeCombiner c) = pure c
+unwrap x = evalError $ "unwrap: not an applicative: " <> showt x
+
 mkBindings :: [(Symbol, Expr)] -> Eval (Map Symbol (IORef Expr))
 mkBindings pairs = liftIO $ do
   Map.fromList <$> traverse (\(x, y) -> newIORef y <&> (x,)) pairs
@@ -114,11 +121,7 @@ mkVau dynamicEnvName params body = do
       , closureDynamicEnv = dynamicEnvName
       }
     fun = UserFun closure
-    combiner = Combiner
-      { combinerType = OperativeCombiner
-      , combinerFun = fun
-      }
-  pure combiner
+  pure $ OperativeCombiner fun
 
 -- Evaluate a list of expressions and return the value of the final expression
 progn :: Environment -> [Expr] -> Eval Expr
@@ -139,14 +142,12 @@ eval env (LList (f:args))   = eval env f >>= \case
 eval _   f                  = pure f
 
 combine :: Environment -> Combiner -> [Expr] -> Eval Expr
-combine env c@(Combiner { combinerType }) args =
-  case combinerType of
-    OperativeCombiner   -> operate env c args
-    ApplicativeCombiner -> traverse (eval env) args >>= combine env (unwrap c)
+combine env (OperativeCombiner c) args = operate env c args
+combine env (ApplicativeCombiner c) args = traverse (eval env) args >>= combine env c
 
-operate :: Environment -> Combiner -> [Expr] -> Eval Expr
+operate :: Environment -> Fun -> [Expr] -> Eval Expr
 operate env c args =
-  case combinerFun c of
+  case c of
     BuiltinFun f -> inEnvironment env $ f args
     UserFun Closure{..} -> do
       let

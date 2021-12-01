@@ -57,17 +57,16 @@ data Closure = Closure
   , closureBody :: [Expr]
   }
 
-data CombinerType = OperativeCombiner | ApplicativeCombiner
 -- TODO: rename this type
 data Fun = BuiltinFun ([Expr] -> Eval Expr) | UserFun !Closure
-data Combiner = Combiner
-  { combinerType :: CombinerType
-  , combinerFun  :: Fun
-  }
+data Combiner
+  = OperativeCombiner Fun
+  | ApplicativeCombiner Combiner
 
-wrap, unwrap :: Combiner -> Combiner
-wrap c = c { combinerType = ApplicativeCombiner }
-unwrap c = c { combinerType = OperativeCombiner }
+instance TextShow Combiner where
+  showb = \case
+    OperativeCombiner{} -> "<operative>"
+    ApplicativeCombiner{} -> "<applicative>"
 
 data Expr
   = LInt Integer
@@ -129,7 +128,7 @@ instance TextShow Expr where
     LList [] -> "nil"
     LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
     LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"
-    LCombiner _ -> "<combiner>"
+    LCombiner c -> showb c
 
 -- Evaluation context (scopes)
 

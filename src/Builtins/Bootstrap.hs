@@ -7,12 +7,11 @@ module Builtins.Bootstrap (builtinBootstrap) where
 import Control.Monad.Reader (ask)
 import TextShow (showt)
 
-import Core (nil, eval, defineVar, mkVau, combine, operate)
+import Core (nil, eval, defineVar, mkVau, combine, operate, wrap, unwrap)
 import Errors
 import Types
 import Builtins.Utils (builtinOp, builtinApp, Builtin)
 
--- ($vau (formals . rest) env body)
 vau :: Builtin
 vau (params:env:body) = do
   envName <- case env of
@@ -41,12 +40,12 @@ primEval [_, x] = evalError $ "eval: expected environment, but got " <> renderTy
 primEval args = numArgs "eval" 2 args
 
 primWrap :: Builtin
-primWrap [LCombiner c] = pure $ LCombiner $ wrap c
+primWrap [LCombiner c] = LCombiner <$> wrap c
 primWrap [x] = evalError $ "wrap: expected combiner, but got " <> renderType x
 primWrap args = numArgs "wrap" 1 args
 
 primUnwrap :: Builtin
-primUnwrap [LCombiner c] = pure $ LCombiner $ unwrap c
+primUnwrap [LCombiner c] = LCombiner <$> unwrap c
 primUnwrap [x] = evalError $ "unwrap: expected combiner, but got " <> renderType x
 primUnwrap args = numArgs "unwrap" 1 args
 
@@ -58,7 +57,8 @@ primCombine [_, _,       x     ] = evalError $ "combine: expected environment, b
 primCombine args = numArgs "combine" 3 args
 
 primOperate :: Builtin
-primOperate [LCombiner combiner, LList operands, LEnv env] = operate env combiner operands
+primOperate [LCombiner (OperativeCombiner combiner), LList operands, LEnv env] = operate env combiner operands
+primOperate [LCombiner x, _, _]  = evalError $ "operate: not an operative: " <> showt x
 primOperate [x, LList _, _     ] = evalError $ "operate: expected combiner, but got " <> renderType x
 primOperate [_, x,       LEnv _] = evalError $ "operate: expected list of operands, but got " <> renderType x
 primOperate [_, _,       x     ] = evalError $ "operate: expected environment, but got " <> renderType x
