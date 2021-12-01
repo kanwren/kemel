@@ -13,17 +13,22 @@ import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (lift)
+import Data.Attoparsec.Text (parse, IResult(..))
+import Data.Default (def)
+import Data.Foldable (traverse_)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.IO qualified as Text.IO
 import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLine)
 import System.Environment (getArgs)
 import System.Exit (ExitCode)
 import TextShow (showt)
 
 import Builtins (mkBuiltins)
-import Core (eval, evalFile)
-import Parser (parseLine)
+import Core (evalFile, progn)
+import Parser (pExprs)
 import Types (Error(..), Eval(..), Bubble(..), renderTagName, Expr(LList))
-import Data.Default (def)
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -46,26 +51,37 @@ handleExceptions = flip catches
 repl :: IO ()
 repl = do
   builtins <- mkBuiltins
-  (res, _) <- runEval (runInputT defaultSettings loop) builtins def
+  (res, _) <- runEval (runInputT defaultSettings (loop Nothing)) builtins def
   handleBubble (\_ -> pure ()) res
   where
-    loop :: InputT Eval ()
-    loop = getInputLine "> " >>= \case
-      Nothing -> pure ()
-      Just line -> do
-        -- TODO: resume!
-        case parseLine line of
-          Left e -> liftIO $ putStrLn e
-          Right Nothing -> pure () -- comment line or empty line
-          Right (Just expr) -> lift $ handleExceptions $ do
-            env <- ask
-            res <- tryError (eval env expr)
-            handleBubble (\case LList [] -> pure (); e -> liftIO (print e)) res
-        loop
+    run :: [Expr] -> InputT Eval ()
+    run exprs = lift $ handleExceptions $ do
+      env <- ask
+      res <- tryError (progn env exprs)
+      handleBubble (\case LList [] -> pure (); e -> liftIO (print e)) res
+    loop :: Maybe Text -> InputT Eval ()
+    loop pending = do
+      input <- getInputLine $ case pending of Nothing -> "> "; Just _ -> "...| "
+      case Text.pack <$> input of
+        Nothing -> pure ()
+        Just line -> do
+          case parse pExprs (fromMaybe "" pending <> line) of
+            Fail rest ctx msg -> do
+              liftIO $ do
+                putStrLn $ "<toplevel>: parse error at " <> show (takeWhile (/= '\n') (take 20 (Text.unpack rest)))
+                putStrLn "context: "
+                traverse_ (putStrLn . ("  " ++)) ctx
+                putStrLn msg
+              loop Nothing
+            Done _ es -> run es *> loop Nothing
+            Partial f ->
+              case f "" of
+                Done _ es -> run es *> loop Nothing
+                _ -> loop (Just (fromMaybe "" pending <> line <> "\n"))
 
 runFile :: String -> IO ()
 runFile path = do
-  contents <- readFile path
+  contents <- Text.IO.readFile path
   builtins <- mkBuiltins
   handleExceptions $ do
     (res, _) <- runEval (ask >>= \env -> evalFile env contents) builtins def

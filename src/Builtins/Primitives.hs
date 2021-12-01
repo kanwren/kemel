@@ -6,14 +6,15 @@
 module Builtins.Primitives (builtinPrimitives) where
 
 import Control.Monad (zipWithM)
-import Control.Monad.Reader (ask)
 import Control.Monad.IO.Class
+import Control.Monad.Reader (ask)
 import Data.Bifunctor (second, first)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
+import Data.Text.IO qualified as Text.IO
 import System.Exit qualified as Exit
 import TextShow (TextShow(..))
 
@@ -191,7 +192,7 @@ printExpr args = numArgs "print" 1 args
 
 load :: Builtin
 load [LString path] = do
-  contents <- liftIO (readFile (Text.unpack path))
+  contents <- liftIO (Text.IO.readFile (Text.unpack path))
   env <- ask
   evalFile env contents
 load [e] = evalError $ "load: expected string as path, but got " <> renderType e

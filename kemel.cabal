@@ -38,7 +38,8 @@ executable kemel
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    , base >=4.13.0.0
-                      , megaparsec
+                      , attoparsec
+                      , parser-combinators
                       , containers
                       , mtl
                       , transformers

@@ -40,7 +40,7 @@ mkBindings :: [(Symbol, Expr)] -> Eval (Map Symbol (IORef Expr))
 mkBindings pairs = liftIO $ do
   Map.fromList <$> traverse (\(x, y) -> newIORef y <&> (x,)) pairs
 
-evalFile :: Environment -> String -> Eval Expr
+evalFile :: Environment -> Text -> Eval Expr
 evalFile env contents =
   case parseFile contents of
     Right res -> progn env res

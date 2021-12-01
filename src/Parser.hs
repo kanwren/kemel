@@ -4,50 +4,51 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Parser (parseLine, parseFile) where
+module Parser (pExprs, parseFile) where
 
-import Control.Arrow (left)
-import Control.Monad (guard)
+import Control.Applicative ((<|>), many, some)
+import Control.Monad (void, guard)
+import Data.Attoparsec.Text as AT hiding (space)
 import Data.CaseInsensitive (CI, foldedCase, mk)
+import Data.Char (isSpace)
 import Data.Functor (($>), (<&>))
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.List.Split qualified as Split
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Void (Void)
-import Text.Megaparsec
-import Text.Megaparsec qualified as M
-import Text.Megaparsec.Char qualified as MC
-import Text.Megaparsec.Char.Lexer qualified as MCL
+import Control.Applicative.Combinators (sepEndBy, optional)
 
 import Types
 import Data.List (foldl')
 
-type Parser = M.Parsec Void String
+space1 :: Parser ()
+space1 = void $ takeWhile1 isSpace
 
 space :: Parser ()
-space = MCL.space MC.space1 (MCL.skipLineComment ";") empty
+space = skipMany $ choice [space1, void (string ";" *> AT.manyTill anyChar (endOfLine <|> endOfInput))]
 
 lexeme :: Parser a -> Parser a
-lexeme = MCL.lexeme space
+lexeme p = p <* space
 
-symbol :: String -> Parser String
-symbol = MCL.symbol space
+symbol :: Text -> Parser Text
+symbol s = string s <* space
+
+label :: String -> Parser a -> Parser a
+label l f = f <?> l
 
 pNumber :: Parser Expr
-pNumber = label "number literal" $ do
-  num <- MCL.signed (pure ()) MCL.decimal
-  pure $ LInt num
+pNumber = label "number literal" $ LInt <$> signed decimal
 
 pBool :: Parser Expr
-pBool = label "bool literal" $ fmap LBool $ (MC.string "#f" $> False) <|> (MC.string "#t" $> True)
+pBool = label "bool literal" $ fmap LBool $ (string "#f" $> False) <|> (string "#t" $> True)
 
 pKeyword :: Parser Expr
-pKeyword = label "keyword" $ MC.char ':' *> (LKeyword . Keyword <$> pId)
+pKeyword = label "keyword" $ char ':' *> (LKeyword . Keyword <$> pId)
 
+-- TODO: character escapes
 pString :: Parser Expr
-pString = label "string literal" $ LString . Text.pack <$> (MC.char '"' *> M.manyTill MCL.charLiteral (MC.char '"'))
+pString = label "string literal" $ LString . Text.pack <$> (char '"' *> ((char '\\' *> anyChar) <|> anyChar) `manyTill` char '"')
 
 -- TODO: allow identifiers beginning with numbers to be arbitrary symbols
 pId :: Parser Symbol
@@ -58,23 +59,23 @@ pId = label "keyword" $ do
   where
     idHeadChar, idChar :: Parser Char
     idHeadChar = label "identifier first char" $ do
-      MC.letterChar <|> M.oneOf ("+-*/!$%&:<=>?@^_~." :: String) <|> MC.numberChar
+      letter <|> satisfy (\c -> Text.any (c ==) "-+*/!$%&:<=>?@^_~.") <|> digit
     idChar = label "identifier char" $ do
-      idHeadChar <|> M.oneOf ("#" :: String)
+      idHeadChar <|> char '#'
 
     arbString :: Parser Text
-    arbString = MC.char '|' *> (Text.pack <$> M.manyTill ((MC.string "\\|" $> '|') <|> M.anySingle) (MC.char '|'))
+    arbString = char '|' *> (Text.pack <$> ((string "\\|" $> '|') <|> anyChar) `manyTill` char '|')
 
     firstChar :: Parser (Either Text (CI Text))
-    firstChar = M.choice
+    firstChar = choice
       [ Left <$> arbString
       , Right . mk . Text.singleton <$> idHeadChar
       ]
 
     restChars :: Parser [Either Text (CI Text)]
-    restChars = M.many $ M.choice
+    restChars = many $ choice
       [ Left <$> arbString
-      , Right . mk . Text.pack <$> M.some idChar
+      , Right . mk . Text.pack <$> some idChar
       ]
 
     identifier :: Parser (NonEmpty (Either Text (CI Text)))
@@ -107,9 +108,12 @@ pQuote = label "quoted expression" $ symbol "'" *> do
   e <- pExpr
   pure $ LList [LSymbol "quote", e]
 
+between :: Parser a -> Parser b -> Parser c -> Parser c
+between s e m = s *> m <* e
+
 pList :: Parser Expr
-pList = label "list" $ between (symbol "(") (MC.char ')') $ do
-  leading <- M.sepEndBy (try pExpr) space
+pList = label "list" $ between (symbol "(") (char ')') $ do
+  leading <- pExpr `sepEndBy` space
   case NonEmpty.nonEmpty leading of
     Nothing -> pure $ LList leading
     Just neLeading -> optional (symbol "." *> lexeme pExpr) >>= \case
@@ -118,14 +122,13 @@ pList = label "list" $ between (symbol "(") (MC.char ')') $ do
       Just end -> pure $ LDottedList neLeading end
 
 pExpr :: Parser Expr
-pExpr = M.choice
+pExpr = choice
   [ pQuote
   , pList
   , pString
   , pKeyword
   , pBool
-  -- try needed due to signs in numbers, '-5' is a number but '-a' is a symbol
-  , try pNumber
+  , pNumber
   , pSymbol
   , symbol "`" *> pBackquoteExpr
   ]
@@ -147,13 +150,13 @@ pBackquoteExpr = do
     Just ListSplice -> fail "list splice after backquote is not allowed"
   where
     pPendingSpliceExpr :: Parser Expr
-    pPendingSpliceExpr = M.choice
+    pPendingSpliceExpr = choice
       [ pQuoteBackquoteed
       , pListBackquoteed
       , quote <$> pString
       , quote <$> pKeyword
       , quote <$> pBool
-      , quote <$> try pNumber
+      , quote <$> pNumber
       , quote <$> pSymbol
       , quote <$> (symbol "`" *> pBackquoteExpr)
       ]
@@ -167,8 +170,8 @@ pBackquoteExpr = do
           let expr' = optional pSplice >>= \sp -> (sp,) <$> case sp of
                 Nothing -> pPendingSpliceExpr
                 Just _  -> pExpr
-          between (symbol "(") (MC.char ')') $ do
-            leading <- M.sepEndBy (try expr') space
+          between (symbol "(") (char ')') $ do
+            leading <- expr' `sepEndBy` space
             case NonEmpty.nonEmpty leading of
               -- NOTE: a notable difference between this and CLisp is that `()`
               -- will always just be NIL, regardless of depth of backquoting.
@@ -207,12 +210,8 @@ spliceBackquotedList (NonEmpty.toList -> xs)
   -- - if there are no splices, the whole list could be quoted, but due to the
   --   preemptive quoting in pPendingSpliceExpr, they'll already be quoted
 
-parseLine :: String -> Either String (Maybe Expr)
-parseLine = left errorBundlePretty . M.parse (space *> optional (lexeme pExpr) <* M.eof) "repl"
+pExprs :: Parser [Expr]
+pExprs = space *> manyTill (lexeme pExpr) endOfInput
 
-pFile :: Parser [Expr]
-pFile = space *> M.many (lexeme pExpr) <* M.eof
-
-parseFile :: String -> Either String [Expr]
-parseFile = left errorBundlePretty . M.parse pFile "load"
-
+parseFile :: Text -> Either String [Expr]
+parseFile = parseOnly pExprs
