@@ -1,11 +1,3 @@
-; TODO:
-; and
-; or
-; not
-; when
-; unless
-; cond
-
 ($define! nil ())
 
 ($define! $quote ($vau (x) #ignore x))
@@ -96,3 +88,12 @@
           ($macro (symbols . body)
                   (the list symbols) ; can't be single bare variable
                   `(,$define! ,symbols (,$let () (,$sequence ,@body) (,list ,@symbols)))))
+
+($define! $cond
+          ($vau conds env
+                ($if (null? conds)
+                     #inert
+                     ($let ((((c . body) . rest) conds))
+                           ($if (eval c env)
+                                (eval `(,$sequence ,@body) env)
+                                (apply (wrap $cond) rest env))))))
