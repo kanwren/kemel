@@ -145,7 +145,7 @@ instance TextShow Expr where
     LString s -> showb s
     LSymbol s -> showb s
     LEnv _ -> "<environment>"
-    LList [LSymbol "quote", x] -> "'" <> showb x
+    LList [LSymbol "$quote", x] -> "'" <> showb x
     LList [] -> "()"
     LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
     LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"

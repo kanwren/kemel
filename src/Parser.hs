@@ -106,13 +106,10 @@ pId = label "keyword" $ do
 pSymbol :: Parser Expr
 pSymbol = LSymbol <$> pId
 
--- 'x is the same as (quote x), where "quote" is a special form that returns
--- its only argument without evaluating it. This is coupled with the
--- corresponding builtin in the `Eval` module.
+-- 'x is the same as ($quote x), where "$quote" is an operator in the standard
+-- library that returns a value without evaluating it.
 pQuote :: Parser Expr
-pQuote = label "quoted expression" $ symbol "'" *> do
-  e <- pExpr
-  pure $ LList [LSymbol "quote", e]
+pQuote = label "quoted expression" $ symbol "'" *> (quote <$> pExpr)
 
 between :: Parser a -> Parser b -> Parser c -> Parser c
 between s e m = s *> m <* e
@@ -147,7 +144,7 @@ pSplice :: Parser Splice
 pSplice = (symbol ",@" $> ListSplice) <|> (symbol "," $> ExprSplice)
 
 quote :: Expr -> Expr
-quote v = LList [LSymbol "quote", v]
+quote v = LList [LSymbol "$quote", v]
 
 -- An xpression in a backquote
 pBackquoteExpr :: Parser Expr
@@ -174,8 +171,8 @@ pBackquoteExpr = do
         pQuoteBackquoteed = label "quoted backquote-expression" $ symbol "'" *> do
           optional pSplice >>= \case
             Nothing -> quote <$> pPendingSpliceExpr
-            Just ExprSplice -> pExpr <&> \e -> LList [LSymbol "list", LList [LSymbol "quote", LSymbol "quote"], e]
-            Just ListSplice -> pExpr <&> \e -> LList [LSymbol "cons", LList [LSymbol "quote", LSymbol "quote"], e]
+            Just ExprSplice -> pExpr <&> \e -> LList [LSymbol "list", LList [LSymbol "$quote", LSymbol "$quote"], e]
+            Just ListSplice -> pExpr <&> \e -> LList [LSymbol "cons", LList [LSymbol "$quote", LSymbol "$quote"], e]
         pListBackquoteed = label "quoted backquote-list" $ do
           let expr' = optional pSplice >>= \sp -> (sp,) <$> case sp of
                 Nothing -> pPendingSpliceExpr
@@ -193,7 +190,7 @@ pBackquoteExpr = do
               --     ''''()  => '''NIL
               -- meaning that NIL and () have to be special-cased to be the
               -- same, regardless of the identifier
-              Nothing -> pure $ LList [LSymbol "quote", LList []]
+              Nothing -> pure $ LList [LSymbol "$quote", LList []]
               Just neLeading -> optional (symbol "." *> lexeme expr') >>= \case
                 Nothing -> pure $ spliceBackquotedList neLeading
                 Just (Just ListSplice, _) -> fail "list splices after a dot are not allowed"
