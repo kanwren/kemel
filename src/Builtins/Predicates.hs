@@ -4,8 +4,9 @@
 
 module Builtins.Predicates (builtinPredicates) where
 
-import TextShow (showt)
 import Control.Monad.Reader (ask)
+import Data.CaseInsensitive (mk)
+import TextShow (showt)
 
 import Builtins.Utils (builtinApp, Builtin, builtinOp)
 import Core (eval)
@@ -55,8 +56,8 @@ primThe [spec, v] = do
 primThe args = numArgs "the" 2 args
 
 primTypep :: Builtin
-primTypep [v, e] = LBool <$> typep "typep" v e
-primTypep args = numArgs "typep" 2 args
+primTypep [v, e] = LBool <$> typep "type?" v e
+primTypep args = numArgs "type?" 2 args
 
 typePred :: Symbol -> Symbol -> Builtin
 typePred name s = \case
@@ -64,21 +65,31 @@ typePred name s = \case
   args -> numArgs name 1 args
 
 builtinPredicates :: [(Symbol, Expr)]
-builtinPredicates =
-  [ ("the", builtinOp primThe)
-  , ("typep", builtinApp primTypep)
-  , ("numberp", builtinApp (typePred "numberp" "number"))
-  , ("integerp", builtinApp (typePred "integerp" "integer"))
-  , ("ratiop", builtinApp (typePred "ratiop" "ratio"))
-  , ("rationalp", builtinApp (typePred "rationalp" "rational"))
-  , ("boolp", builtinApp (typePred "boolp" "bool"))
-  , ("charp", builtinApp (typePred "charp" "char"))
-  , ("keywordp", builtinApp (typePred "keywordp" "keyword"))
-  , ("stringp", builtinApp (typePred "stringp" "string"))
-  , ("symbolp", builtinApp (typePred "symbolp" "symbol"))
-  , ("null", builtinApp (typePred "null" "null"))
-  , ("listp", builtinApp (typePred "listp" "list"))
-  , ("consp", builtinApp (typePred "consp" "cons"))
-  , ("functionp", builtinApp (typePred "functionp" "function"))
-  , ("macrop", builtinApp (typePred "macrop" "macro"))
-  ]
+builtinPredicates = helpers <> typePreds
+  where
+    helpers =
+      [ ("the", builtinOp primThe)
+      , ("type?", builtinApp primTypep)
+      ]
+    typePreds = fmap mkPred
+      [ "inert"
+      , "ignore"
+      , "number"
+      , "integer"
+      , "bool"
+      , "keyword"
+      , "string"
+      , "symbol"
+      , "environment"
+      , "null"
+      , "list"
+      , "pair"
+      , "combiner"
+      , "operative"
+      , "applicative"
+      ]
+    mkPred name =
+      let
+        typeName = SimpleSymbol $ mk name
+        predName = SimpleSymbol $ mk $ name <> "?"
+      in (predName, builtinApp (typePred predName typeName))

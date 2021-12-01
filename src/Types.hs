@@ -84,7 +84,8 @@ instance TextShow Combiner where
     ApplicativeCombiner{} -> "<applicative>"
 
 data Expr
-  = LIgnore
+  = LInert
+  | LIgnore
   | LInt Integer
   | LBool Bool
   | LKeyword Keyword
@@ -101,6 +102,7 @@ renderType = showt . typeToSymbol
 
 typeToSymbol :: Expr -> Symbol
 typeToSymbol = SimpleSymbol . \case
+  LInert -> "inert"
   LIgnore -> "ignore"
   LInt _ -> "integer"
   LBool _ -> "bool"
@@ -109,12 +111,13 @@ typeToSymbol = SimpleSymbol . \case
   LSymbol _ -> "symbol"
   LEnv _ -> "environment"
   LList [] -> "null"
-  LList _ -> "cons"
-  LDottedList _ _ -> "cons"
+  LList (_:_) -> "pair"
+  LDottedList _ _ -> "pair"
   LCombiner _ -> "combiner"
 
 symbolToTypePred :: Symbol -> Maybe (Expr -> Bool)
 symbolToTypePred = \case
+  "inert" -> pure $ \case LInert -> True; _ -> False
   "ignore" -> pure $ \case LIgnore -> True; _ -> False
   "number" -> pure $ \case LInt _ -> True; _ -> False
   "integer" -> pure $ \case LInt _ -> True; _ -> False
@@ -125,12 +128,15 @@ symbolToTypePred = \case
   "environment" -> pure $ \case LEnv _ -> True; _ -> False
   "null" -> pure $ \case LList [] -> True; _ -> False
   "list" -> pure $ \case LList _ -> True; LDottedList _ _ -> True; _ -> False
-  "cons" -> pure $ \case LDottedList _ _ -> True; LList (_:_) -> True; _ -> False
-  "combiner" -> pure $ \case LCombiner{} -> True; _ -> False
+  "pair" -> pure $ \case LDottedList _ _ -> True; LList (_:_) -> True; _ -> False
+  "combiner" -> pure $ \case LCombiner _ -> True; _ -> False
+  "operative" -> pure $ \case LCombiner (OperativeCombiner _) -> True; _ -> False
+  "applicative" -> pure $ \case LCombiner (ApplicativeCombiner _) -> True; _ -> False
   _ -> Nothing
 
 instance TextShow Expr where
   showb = \case
+    LInert -> "#inert"
     LIgnore -> "#ignore"
     LInt n -> showb n
     LBool False -> "#f"
@@ -140,7 +146,7 @@ instance TextShow Expr where
     LSymbol s -> showb s
     LEnv _ -> "<environment>"
     LList [LSymbol "quote", x] -> "'" <> showb x
-    LList [] -> "nil"
+    LList [] -> "()"
     LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
     LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"
     LCombiner c -> showb c

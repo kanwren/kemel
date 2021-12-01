@@ -1,4 +1,3 @@
-- `#inert`
 - Move more things out of the builtins:
   - `progn`
   - `append` (currently needed for splice syntax, probably write `$lambda` etc. without splices to begin with until `append` is implemented)

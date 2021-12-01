@@ -125,7 +125,7 @@ mkVau dynamicEnvName params body = do
 progn :: Environment -> [Expr] -> Eval Expr
 progn env = go
   where
-    go [] = pure nil
+    go [] = pure LInert
     go [x] = eval env x
     go (x:y) = eval env x *> go y
 

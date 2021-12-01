@@ -23,11 +23,11 @@ vau args = numArgsAtLeast "$vau" 2 args
 
 define :: Builtin
 define [LIgnore, _] = pure nil
-define [LSymbol name, x] = nil <$ do
+define [LSymbol name, x] = LInert <$ do
   env <- ask
   val <- eval env x
   defineVar name val env
-define [LList xs, LList vs] = nil <$ do
+define [LList xs, LList vs] = LInert <$ do
   let
     go [] [] = pure ()
     go (LSymbol x:xs') (v:vs') = do

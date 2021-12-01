@@ -27,7 +27,7 @@ import System.Exit (ExitCode)
 import Builtins (mkBuiltins)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Error(..), Eval(..), Bubble(..), Expr(LList))
+import Types (Error(..), Eval(..), Bubble(..), Expr(..))
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -53,7 +53,7 @@ repl = do
     run exprs = lift $ handleExceptions $ do
       env <- ask
       res <- tryError (progn env exprs)
-      handleBubble (\case LList [] -> pure (); e -> liftIO (print e)) res
+      handleBubble (\case LInert -> pure (); e -> liftIO (print e)) res
     loop :: Maybe Text -> InputT Eval ()
     loop pending = do
       input <- getInputLine $ case pending of Nothing -> "> "; Just _ -> "...| "

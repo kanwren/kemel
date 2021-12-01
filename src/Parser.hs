@@ -40,6 +40,9 @@ label l f = f <?> l
 pNumber :: Parser Expr
 pNumber = label "number literal" $ LInt <$> signed decimal
 
+pInert :: Parser Expr
+pInert = label "inert literal" $ string "#inert" $> LInert
+
 pIgnore :: Parser Expr
 pIgnore = label "ignore literal" $ string "#ignore" $> LIgnore
 
@@ -130,6 +133,7 @@ pExpr = choice
   , pList
   , pString
   , pKeyword
+  , pInert
   , pIgnore
   , pBool
   , pNumber
@@ -159,6 +163,7 @@ pBackquoteExpr = do
       , pListBackquoteed
       , quote <$> pString
       , quote <$> pKeyword
+      , quote <$> pInert
       , quote <$> pIgnore
       , quote <$> pBool
       , quote <$> pNumber

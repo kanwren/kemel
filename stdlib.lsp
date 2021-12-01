@@ -34,7 +34,7 @@
 
 ($define! map
           ($lambda (f xs)
-                   (if (null xs)
+                   (if (null? xs)
                      ()
                      (cons (f (car xs)) (map f (cdr xs))))))
 
@@ -42,16 +42,4 @@
           ($vau (bindings &rest body) env
                 (eval
                   `(($lambda ,(map car bindings) ,@body) ,@(map cadr bindings))
-                  env)))
-
-($define! $cond
-          ($vau (&rest conds) env
-                (eval
-                  (foldr
-                    (lambda (clause1 rest)
-                      `(if
-                         ,(car clause1)
-                         (progn ,@(cdr clause1))
-                         ,rest))
-                    nil conds)
                   env)))
