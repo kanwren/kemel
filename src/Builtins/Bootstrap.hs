@@ -6,9 +6,10 @@
 module Builtins.Bootstrap (builtinBootstrap) where
 
 import Control.Monad.Reader (ask)
+import Data.Foldable (traverse_)
 import TextShow (showt)
 
-import Core (nil, eval, defineVar, mkVau, combine, operate, wrap, unwrap)
+import Core (eval, defineVar, mkVau, combine, operate, wrap, unwrap, matchParams, parseParamTree)
 import Errors
 import Types
 import Builtins.Utils (builtinOp, builtinApp, Builtin)
@@ -23,26 +24,12 @@ vau (params:env:body) = do
 vau args = numArgsAtLeast "$vau" 2 args
 
 define :: Builtin
-define [LIgnore, _] = pure nil
-define [LSymbol name, x] = LInert <$ do
+define [bs, ps] = LInert <$ do
+  tree <- parseParamTree "$define!" bs
   env <- ask
-  val <- eval env x
-  defineVar name val env
-define [LList xs, rhs] = LInert <$ do
-  let
-    go [] [] = pure ()
-    go (LSymbol x:xs') (v:vs') = do
-      env <- ask
-      val <- eval env v
-      defineVar x val env
-      go xs' vs'
-    go (x:_) (_:_) = evalError $ "$define!: expected symbol, but got " <> renderType x
-    go _ _ = evalError "$define!: mismatched binders and values"
-  env <- ask
-  eval env rhs >>= \case
-    LList vs -> go xs vs
-    res -> evalError $ "$define!: expected list of values to assign, but got " <> renderType res
-define [e, _] = evalError $ "$define!: expected symbol, but got " <> renderType e
+  ps' <- eval env ps
+  bindings <- matchParams "$define!" tree ps'
+  traverse_ (\(name, val) -> defineVar name val env) bindings
 define args = numArgsBound "$define!" (1, 2) args
 
 primEval :: Builtin

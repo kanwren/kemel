@@ -9,14 +9,16 @@
 
 module Core where
 
-import Control.Monad.IO.Class
+import Control.Monad.Except
 import Control.Monad.Reader (ask)
+import Control.Monad.Writer
+import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.IORef (newIORef, readIORef, writeIORef, IORef)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import TextShow (TextShow(..))
@@ -54,66 +56,71 @@ defineVar i val (Environment envVar) = do
       liftIO $ writeIORef envVar $ Map.insert i ref mapping
     Just ref -> liftIO $ writeIORef ref val
 
+parseParamTree :: Symbol -> Expr -> Eval ParamTree
+parseParamTree name = go
+  where
+    single :: Expr -> Eval Binder
+    single LIgnore = pure IgnoreBinder
+    single (LSymbol s) = pure $ NamedBinder s
+    single x = evalError $ showt name <> ": invalid paramtere tree: " <> showt x
+
+    go (LList ps) = ParamList <$> traverse go ps
+    go (LDottedList ps p) = ParamDottedList <$> traverseNE go ps <*> single p
+      where
+        traverseNE :: Applicative f => (a -> f b) -> NonEmpty a -> f (NonEmpty b)
+        traverseNE f (x :| xs) = (:|) <$> f x <*> traverse f xs
+    go x = BoundParam <$> single x
+
+matchParams :: Symbol -> ParamTree -> Expr -> Eval [(Symbol, Expr)]
+matchParams name tree args = do
+    case runExcept $ execWriterT $ go tree args of
+      Left e -> throwError $ EvalError e
+      Right binds -> pure binds
+  where
+    bind :: MonadWriter [(Symbol, Expr)] m => Binder -> Expr -> m ()
+    bind IgnoreBinder _ = pure ()
+    bind (NamedBinder s) v = tell [(s, v)]
+
+    zipLeftover :: [a] -> [b] -> ([(a, b)], Maybe (Either [a] [b]))
+    zipLeftover [] [] = ([], Nothing)
+    zipLeftover (x:xs) [] = ([], Just (Left (x:xs)))
+    zipLeftover [] (y:ys) = ([], Just (Right (y:ys)))
+    zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
+
+    toError :: Text -> WriterT [(Symbol, Expr)] (Except Error) ()
+    toError e = throwError $ Error $ showt name <> ": " <> e
+
+    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Error) ()
+    go (BoundParam b) p = bind b p
+    go (ParamList bs) (LList ps) =
+      case zipLeftover bs ps of
+        (pairs, Nothing) -> traverse_ (uncurry go) pairs
+        (_, Just (Left _)) -> toError "not enough values when unpacking list"
+        (_, Just (Right _)) -> toError "too many values when unpacking list"
+    go (ParamList _) (LDottedList _ _) = toError "attempted to unpack dotted list into proper list"
+    go (ParamList _) x = toError $ "expected a list to unpack, but got " <> renderType x
+    go (ParamDottedList bs b) (LList ps) =
+      case zipLeftover (NonEmpty.toList bs) ps of
+        (pairs, Nothing) -> traverse_ (uncurry go) pairs *> bind b (LList [])
+        (_, Just (Left _)) -> toError "not enough values when unpacking list"
+        (pairs, Just (Right leftover)) -> traverse_ (uncurry go) pairs *> bind b (LList leftover)
+    go (ParamDottedList bs b) (LDottedList ps p) =
+      case zipLeftover (NonEmpty.toList bs) (NonEmpty.toList ps) of
+        (pairs, Nothing) -> traverse_ (uncurry go) pairs *> bind b p
+        (_, Just (Left _)) -> toError "not enough values when unpacking list"
+        (pairs, Just (Right leftover)) -> traverse_ (uncurry go) pairs *>
+          case leftover of
+            [] -> bind b p
+            (x:xs) -> bind b (LDottedList (x:|xs) p)
+    go (ParamDottedList _ _) x = toError $ "expected a list to unpack, but got " <> renderType x
+
 mkVau :: Binder -> Expr -> [Expr] -> Eval Combiner
 mkVau dynamicEnvName params body = do
-  let
-    toError :: Text -> Eval a
-    toError e = evalError $ "$vau" <> ": " <> e
-
-    parseArgs :: Expr -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
-    parseArgs (LList ps) = mainArgs [] ps
-    parseArgs t = toError $ "invalid argument list: expected list, but got " <> renderType t
-    -- Parse the main arguments from the parameter list
-    mainArgs :: [Binder] -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
-    mainArgs ma []                         = pure (reverse ma, [], Nothing, mempty)
-    mainArgs ma (LSymbol "&optional":spec) = optionalArgs (reverse ma, []) spec
-    mainArgs ma (LSymbol "&rest":spec)     = restArgs (reverse ma, []) spec
-    mainArgs ma (LSymbol "&key":spec)      = keyArgs (reverse ma, [], Nothing, mempty) spec
-    mainArgs ma (LSymbol s:xs)             = mainArgs (NamedBinder s:ma) xs
-    mainArgs ma (LIgnore:xs)               = mainArgs (IgnoreBinder:ma) xs
-    mainArgs _  (x:_)                      = toError $ "invalid argument list: invalid parameter " <> showt x
-    -- Parse the optional arguments from the parameter list
-    optionalArgs :: ([Binder], [(Binder, Expr)]) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
-    optionalArgs (ma, oa) []                        = pure (ma, reverse oa, Nothing, mempty)
-    optionalArgs _        (LSymbol "&optional":_)   = toError "&optional not allowed here"
-    optionalArgs (ma, oa) (LSymbol "&rest":spec)    = restArgs (ma, reverse oa) spec
-    optionalArgs (ma, oa) (LSymbol "&key":spec)     = keyArgs (ma, reverse oa, Nothing, mempty) spec
-    optionalArgs (ma, oa) (LSymbol s:xs)            = optionalArgs (ma, (NamedBinder s, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LSymbol s]:xs)    = optionalArgs (ma, (NamedBinder s, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LSymbol s, v]:xs) = do env <- ask; v' <- eval env v; optionalArgs (ma, (NamedBinder s, v'):oa) xs
-    optionalArgs (ma, oa) (LIgnore:xs)              = optionalArgs (ma, (IgnoreBinder, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LIgnore]:xs)      = optionalArgs (ma, (IgnoreBinder, nil):oa) xs
-    optionalArgs (ma, oa) (LList [LIgnore, v]:xs)   = do env <- ask; v' <- eval env v; optionalArgs (ma, (IgnoreBinder, v'):oa) xs
-    optionalArgs _        (x:_)                     = toError $ "invalid argument list: invalid parameter " <> showt x
-    -- Parse the rest argument from the parameter list
-    restArgs :: ([Binder], [(Binder, Expr)]) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
-    restArgs (ma, oa) []                               = pure (ma, oa, Nothing, mempty)
-    restArgs _        [LSymbol "&optional"]            = toError "&optional not allowed here"
-    restArgs _        [LSymbol "&rest"]                = toError "&rest not allowed here"
-    restArgs (ma, oa) [LSymbol s]                      = pure (ma, oa, Just (NamedBinder s), mempty)
-    restArgs (ma, oa) [LIgnore]                        = pure (ma, oa, Just IgnoreBinder, mempty)
-    restArgs (ma, oa) (LSymbol s:LSymbol "&key":rest)  = keyArgs (ma, oa, Just (NamedBinder s), mempty) rest
-    restArgs (ma, oa) (LIgnore:LSymbol "&key":rest)    = keyArgs (ma, oa, Just IgnoreBinder, mempty) rest
-    restArgs _        (LSymbol _:x:_)                  = toError $ "unexpected extra argument after rest parameter: " <> showt x
-    restArgs _        (x:_)                            = toError $ "invalid argument list: invalid parameter " <> showt x
-    -- Parse the key arguments from the parameter list
-    keyArgs :: ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr) -> [Expr] -> Eval ([Binder], [(Binder, Expr)], Maybe Binder, Map Symbol Expr)
-    keyArgs (ma, oa, r, ka) []                         = pure (ma, oa, r, ka)
-    keyArgs _               (LSymbol "&optional":_)    = toError "&optional not allowed here"
-    keyArgs _               (LSymbol "&rest":_)        = toError "&rest not allowed here"
-    keyArgs _               (LSymbol "&key":_)         = toError "&key not allowed here"
-    keyArgs (ma, oa, r, ka) (LSymbol s:xs)             = keyArgs (ma, oa, r, Map.insert s nil ka) xs
-    keyArgs (ma, oa, r, ka) (LList [LSymbol s]:xs)     = keyArgs (ma, oa, r, Map.insert s nil ka) xs
-    keyArgs (ma, oa, r, ka) (LList [LSymbol s, v]:xs)  = do env <- ask; v' <- eval env v; keyArgs (ma, oa, r, Map.insert s v' ka) xs
-    keyArgs _               (x:_)                      = toError $ "invalid argument list: invalid parameter " <> showt x
-  (mainParams, optionals, rest, keywordParams) <- parseArgs params
+  paramTree <- parseParamTree "$vau" params
   env <- ask
   let
     closure = Closure
-      { closureParams = mainParams
-      , closureOptionalParams = optionals
-      , closureRest = rest
-      , closureKeywordParams = keywordParams
+      { closureParams = paramTree
       , closureBody = body
       , closureStaticEnv = env
       , closureDynamicEnv = dynamicEnvName
@@ -150,45 +157,13 @@ operate env c args =
     UserOp Closure{..} -> do
       let
         name = "<combiner>"
-        len = length closureParams
-        argsError =
-          if isJust closureRest
-          then numArgsAtLeast name len args
-          else numArgs name len args
-        matchParams :: [Binder] -> [(Binder, Expr)] -> Maybe Binder -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
-        matchParams ps os r ks as = reverse <$> matchParams' [] ps os r ks as
-        matchParams' :: [(Symbol, Expr)] -> [Binder] -> [(Binder, Expr)] -> Maybe Binder -> Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
-        matchParams' bs (IgnoreBinder:ms)  os                      r        ks (_:as) = matchParams' bs ms os r ks as
-        matchParams' bs (NamedBinder m:ms) os                      r        ks (a:as) = matchParams' ((m,a):bs) ms os r ks as
-        matchParams' _  (_:_)              _                       _        _  []     = argsError -- not enough args
-        matchParams' bs []                 ((NamedBinder o, _):os) r        ks (a:as) = matchParams' ((o,a):bs) [] os r ks as
-        matchParams' bs []                 ((IgnoreBinder, _):os)  r        ks (_:as) = matchParams' bs [] os r ks as
-        matchParams' bs []                 ((NamedBinder o, v):os) r        ks []     = matchParams' ((o, v):bs) [] os r ks []
-        matchParams' bs []                 ((IgnoreBinder, _):os)  r        ks []     = matchParams' bs [] os r ks []
-        matchParams' bs []                 []                      (Just IgnoreBinder) ks as
-          | null ks = pure bs
-          | otherwise = (bs ++) <$> matchParamsKeywords ks as
-        matchParams' bs []                 []                      (Just (NamedBinder r)) ks as
-          | null ks = pure $ (r, LList as):bs
-          | otherwise = (((r, LList as):bs) ++) <$> matchParamsKeywords ks as
-        matchParams' bs []     []          Nothing  ks as
-          | not (null as) && null ks = argsError -- better error messages when no keyword args and too many parameters
-          | otherwise = (bs ++) <$> matchParamsKeywords ks as
-        matchParamsKeywords :: Map Symbol Expr -> [Expr] -> Eval [(Symbol, Expr)]
-        matchParamsKeywords = go
-          where
-            go res [] = pure $ Map.assocs res
-            go res (LKeyword k@(Keyword s):v:rest)
-              | s `Map.member` res = go (Map.insert s v res) rest
-              | otherwise = evalError $ showt name <> ": unexpected keyword: " <> showt k
-            go _ (LKeyword _:_) = evalError $ showt name <> ": expected value for keyword argument"
-            go _ (x:_) = evalError $ showt name <> ": unexpected parameter in keyword arguments: " <> showt x
+
         dynamicEnvBinding :: Maybe (Symbol, Expr)
         dynamicEnvBinding =
           case closureDynamicEnv of
             IgnoreBinder -> Nothing
             NamedBinder n -> Just (n, LEnv env)
-      paramBinds <- matchParams closureParams closureOptionalParams closureRest closureKeywordParams args
+      paramBinds <- matchParams name closureParams (LList args)
       binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
       inEnvironment closureStaticEnv $ withLocalBindings binds $ do
         env' <- ask

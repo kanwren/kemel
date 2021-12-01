@@ -9,7 +9,7 @@
 ($define! nil ())
 
 ($define! $quote ($vau (x) #ignore x))
-($define! list (wrap ($vau (&rest xs) #ignore xs))) ; $lambda (&rest xs) xs
+($define! list (wrap ($vau xs #ignore xs))) ; $lambda xs xs
 ($define! list* nil) ; TODO
 
 ; TODO: move $sequence out of builtins
@@ -19,21 +19,56 @@
           (wrap ($vau () e e)))
 
 ($define! $lambda
-          ($vau (formals &rest body) env
+          ($vau (formals . body) env
                 (wrap (eval `(,$vau ,formals #ignore ,@body) env))))
 
 ($define! $macro
-          ($vau (formals &rest body) env
+          ($vau (formals . body) env
                 ($let ((env-var (gensym)))
                   (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env))))
 
 ($define! cadr ($lambda (xs) (car (cdr xs))))
 
+($define! not? ($lambda (x) ($if x #f #t)))
+
+($define! $and?
+          ($vau conds env
+                ($if (null? conds)
+                     #t
+                     ($if (eval (car conds) env)
+                          (apply (wrap $and?) (cdr conds) env)
+                          #f))))
+
+($define! $or?
+          ($vau conds env
+                ($if (null? conds)
+                     #f
+                     ($if (eval (car conds) env)
+                          #t
+                          (apply (wrap $or?) (cdr conds) env)))))
+
+($define! $when
+          ($vau (cond . body) env
+                ($if (eval cond env)
+                     (eval `(,$sequence ,@body) env)
+                     #inert)))
+
+($define! $unless
+          ($vau (cond . body) env
+                ($if (eval cond env)
+                     #inert
+                     (eval `(,$sequence ,@body) env))))
+
 ($define! apply
-          ($lambda (op args &optional env)
+          ($lambda (op args . optional-env)
                    (eval
                      `(,(unwrap op) ,@args)
-                     ($if (null? env) (make-environment) env))))
+                     ($if (null? optional-env)
+                          (make-environment)
+                          ($sequence
+                            ; Assert there's only one optional parameter
+                            (the null (cdr optional-env))
+                            (car optional-env))))))
 
 ($define! map
           ($lambda (f xs)
@@ -42,7 +77,7 @@
                         (cons (f (car xs)) (map f (cdr xs))))))
 
 ($define! $let
-          ($vau (bindings &rest body) env
+          ($vau (bindings . body) env
                 (eval
                   `((,$lambda ,(map car bindings) ,@body) ,@(map cadr bindings))
                   env)))
@@ -58,6 +93,6 @@
                 (eval binder (eval target-env env))))
 
 ($define! $provide!
-          ($macro (symbols &rest body)
+          ($macro (symbols . body)
                   (the list symbols) ; can't be single bare variable
                   `(,$define! ,symbols (,$let () (,$sequence ,@body) (,list ,@symbols)))))

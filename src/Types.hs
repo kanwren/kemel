@@ -54,14 +54,16 @@ data Binder
   = IgnoreBinder
   | NamedBinder Symbol
 
+data ParamTree
+  = BoundParam Binder
+  | ParamList [ParamTree]
+  | ParamDottedList (NonEmpty ParamTree) Binder -- last part of dotted list can't be a list
+
 -- | The definition of a user-defined vau operative. Holds the parameter
 -- specification, vau body, and the static environment closed over when the vau
 -- is created.
 data Closure = Closure
-  { closureParams :: [Binder]
-  , closureOptionalParams :: [(Binder, Expr)]
-  , closureRest :: Maybe Binder
-  , closureKeywordParams :: Map Symbol Expr
+  { closureParams :: ParamTree
   , closureDynamicEnv :: Binder
   , closureStaticEnv :: Environment
   , closureBody :: [Expr]

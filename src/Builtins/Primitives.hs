@@ -200,7 +200,7 @@ primGensym [] = LSymbol <$> genSym
 primGensym args = numArgs "gensym" 0 args
 
 printExpr :: Builtin
-printExpr [e] = liftIO (print e) $> e
+printExpr [e] = liftIO (print e) $> LInert
 printExpr args = numArgs "print" 1 args
 
 load :: Builtin
