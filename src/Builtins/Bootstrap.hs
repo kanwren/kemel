@@ -46,26 +46,24 @@ define env [bs, ps] = LInert <$ do
 define _ args = numArgs "$define!" 2 args
 
 primEval :: Builtin
-primEval _ [e, LEnv env] = eval env e
-primEval _ [_, x] = evalError $ "eval: expected environment, but got " <> renderType x
+primEval _ [e, x] = getEnvironment "eval" x >>= \env -> eval env e
 primEval _ args = numArgs "eval" 2 args
 
 primWrap :: Builtin
-primWrap _ [LCombiner c] = LCombiner <$> wrap c
-primWrap _ [x] = evalError $ "wrap: expected combiner, but got " <> renderType x
+primWrap _ [x] = do
+  c <- getCombiner "wrap" x
+  LCombiner <$> wrap c
 primWrap _ args = numArgs "wrap" 1 args
 
 primUnwrap :: Builtin
-primUnwrap _ [LCombiner c] = LCombiner <$> unwrap c
-primUnwrap _ [x] = evalError $ "unwrap: expected combiner, but got " <> renderType x
+primUnwrap _ [x] = do
+  c <- getCombiner "unwrap" x
+  LCombiner <$> unwrap c
 primUnwrap _ args = numArgs "unwrap" 1 args
 
 makeEnvironment :: Builtin
 makeEnvironment _ args = do
-  let
-    toEnv (LEnv e) = pure e
-    toEnv x = evalError $ "make-environment: expected environment, but got " <> renderType x
-  parents <- traverse toEnv args
+  parents <- traverse (getEnvironment "make-environment") args
   env <- liftIO $ newEnvironment parents
   pure $ LEnv env
 
@@ -80,10 +78,7 @@ binds env (envExpr:args) = do
   targetEnv <- eval env envExpr >>= \case
     LEnv targetEnv -> pure targetEnv
     x -> evalError $ "$binds?: expected environment, but got " <> renderType x
-  let
-    getSym (LSymbol s) = pure s
-    getSym x = evalError $ "$binds?: expected symbol, but got " <> renderType x
-  syms <- traverse getSym args
+  syms <- traverse (getSymbol "$binds?") args
   let isBound sym = isJust <$> lookupVar sym targetEnv
   LBool <$> allM isBound syms
 binds _ [] = numArgsAtLeast "$binds?" 1 []

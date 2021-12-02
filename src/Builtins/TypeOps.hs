@@ -14,6 +14,7 @@ import Types
 typep :: Symbol -> Expr -> Expr -> Eval Bool
 typep name v = go
   where
+    go :: Expr -> Eval Bool
     go (LSymbol s) =
       case symbolToTypePred s of
         Just p  -> pure $ p v

@@ -69,10 +69,7 @@ parseParamTree name = go
     go x = BoundParam <$> single x
 
 matchParams :: Symbol -> ParamTree -> Expr -> Eval [(Symbol, Expr)]
-matchParams name tree args = do
-    case runExcept $ execWriterT $ go tree args of
-      Left e -> throwError $ EvalError e
-      Right binds -> pure binds
+matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
   where
     bind :: MonadWriter [(Symbol, Expr)] m => Binder -> Expr -> m ()
     bind IgnoreBinder _ = pure ()
@@ -84,10 +81,10 @@ matchParams name tree args = do
     zipLeftover [] (y:ys) = ([], Just (Right (y:ys)))
     zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
 
-    toError :: Text -> WriterT [(Symbol, Expr)] (Except Text) ()
-    toError e = throwError $ showt name <> ": " <> e
+    toError :: Text -> WriterT [(Symbol, Expr)] (Except Bubble) ()
+    toError e = evalError $ showt name <> ": " <> e
 
-    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Text) ()
+    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Bubble) ()
     go (BoundParam b) p = bind b p
     go (ParamList bs) (LList ps) =
       case zipLeftover bs ps of
@@ -95,7 +92,7 @@ matchParams name tree args = do
         (_, Just (Left _)) -> toError "not enough values when unpacking list"
         (_, Just (Right _)) -> toError "too many values when unpacking list"
     go (ParamList _) (LDottedList _ _) = toError "attempted to unpack dotted list into proper list"
-    go (ParamList _) x = toError $ "expected a list to unpack, but got " <> renderType x
+    go (ParamList _) x = typeError name "a list to unpack" x
     go (ParamDottedList bs b) (LList ps) =
       case zipLeftover (NonEmpty.toList bs) ps of
         (pairs, Nothing) -> traverse_ (uncurry go) pairs *> bind b (LList [])
@@ -109,7 +106,7 @@ matchParams name tree args = do
           case leftover of
             [] -> bind b p
             (x:xs) -> bind b (LDottedList (x:|xs) p)
-    go (ParamDottedList _ _) x = toError $ "expected a list to unpack, but got " <> renderType x
+    go (ParamDottedList _ _) x = typeError name "a list to unpack" x
 
 mkVau :: Environment -> Binder -> Expr -> Expr -> Eval Combiner
 mkVau staticEnv dynamicEnvName params body = do

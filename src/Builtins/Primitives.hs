@@ -23,7 +23,10 @@ import Types
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
-  [ ("+", iadd)
+  [ ("not?", primNot)
+  , ("and?", primAnd)
+  , ("or?", primOr)
+  , ("+", iadd)
   , ("-", isub)
   , ("*", imul)
   , ("div", iidiv)
@@ -49,12 +52,24 @@ builtinPrimitives = fmap (second builtinApp)
   , ("exit", exit)
   ]
 
+primNot :: Builtin
+primNot _ [LBool b] = pure $ LBool $ not b
+primNot _ [x] = typeError "not?" "bool" x
+primNot _ args = numArgs "not?" 1 args
+
+primAnd :: Builtin
+primAnd _ args = LBool . and <$> traverse (getBool "and?") args
+
+primOr :: Builtin
+primOr _ args = LBool . or <$> traverse (getBool "or?") args
+
 asInts :: Symbol -> [Expr] -> Eval [Integer]
 asInts name = go []
   where
+    go :: [Integer] -> [Expr] -> Eval [Integer]
     go acc [] = pure $ reverse acc
     go acc (LInt x:xs) = go (x:acc) xs
-    go _ (e:_) = evalError $ showt name <> ": expected integer, but got " <> renderType e
+    go _ (e:_) = typeError name "integer" e
 
 iadd :: Builtin
 iadd _ args = asInts "+" args <&> LInt . foldl' (+) 0
@@ -102,7 +117,7 @@ ile _ = comparison "<=" (<=)
 primLength :: Builtin
 primLength _ [LList xs] = pure $ LInt $ fromIntegral $ length xs
 primLength _ [LString xs] = pure $ LInt $ fromIntegral $ Text.length xs
-primLength _ [_] = evalError "length: expected a sequence"
+primLength _ [x] = typeError "length" "sequence" x
 primLength _ args = numArgs "length" 1 args
 
 stringComparison :: Symbol -> (forall e. Ord e => e -> e -> Bool) -> [Expr] -> Eval Expr
@@ -158,7 +173,7 @@ load :: Builtin
 load env [LString path] = do
   contents <- liftIO (Text.IO.readFile (Text.unpack path))
   evalFile env contents
-load _ [e] = evalError $ "load: expected string as path, but got " <> renderType e
+load _ [e] = typeError "load" "string as path" e
 load _ args = numArgs "load" 1 args
 
 exit :: Builtin

@@ -22,9 +22,8 @@ builtinControlFlow =
 
 primIf :: Builtin
 primIf env [cond, x, y] = do
-  eval env cond >>= \case
-    LBool b -> if b then eval env x else eval env y
-    e       -> evalError $ "$if: expected boolean condition but got " <> renderType e
+  b <- getBool "$if" =<< eval env cond
+  if b then eval env x else eval env y
 primIf _ args = numArgs "$if" 3 args
 
 primBlock :: Builtin

@@ -118,8 +118,8 @@ typeToSymbol = SimpleSymbol . \case
   LList [] -> "null"
   LList (_:_) -> "pair"
   LDottedList _ _ -> "pair"
-  LCombiner (OperativeCombiner _) -> "<operative>"
-  LCombiner (ApplicativeCombiner _) -> "<applicative>"
+  LCombiner (OperativeCombiner _) -> "operative"
+  LCombiner (ApplicativeCombiner _) -> "applicative"
 
 symbolToTypePred :: Symbol -> Maybe (Expr -> Bool)
 symbolToTypePred = \case
