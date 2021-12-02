@@ -127,24 +127,6 @@
                   `((,$lambda ,(map car bindings) ,@body) ,@(map cadr bindings))
                   env)))
 
-($define! $set!
-          ($vau (target-env binders vals) env
-                (eval
-                  `(,$define! ,binders (,(unwrap eval) ,vals ,env))
-                  (eval target-env env))))
-
-($define! $get
-          ($vau (target-env binder) env
-                (eval binder (eval target-env env))))
-
-($define! $provide!
-          ($macro (symbols . body)
-                  (the list symbols) ; can't be single bare variable
-                  `(,$define! ,symbols
-                              (,$let ()
-                                     (,$sequence ,@body)
-                                     (,list ,@symbols)))))
-
 ($define! $cond
           ($vau conds env
                 ($if (null? conds)
@@ -153,3 +135,37 @@
                            ($if (eval c env)
                                 (eval `(,$sequence ,@body) env)
                                 (apply (wrap $cond) rest env))))))
+
+; Evaluate an expression in the provided environment
+($define! $remote-eval
+          ($vau (exp target-env) env
+                (eval exp (eval target-env env))))
+
+; Set variables in the given environment
+($define! $set!
+          ($vau (target-env binders vals) env
+                (eval
+                  `(,$define! ,binders (,(unwrap eval) ,vals ,env))
+                  (eval target-env env))))
+
+; Look up a variable in the given environment
+; This is just $remote-eval, but with the arguments flipped
+($define! $get
+          ($vau (target-env exp) env
+                (eval exp (eval target-env env))))
+
+; Run a sequence of commands, and bind the provided symbols from the resulting
+; environment into the current environment
+($define! $provide!
+          ($macro (symbols . body)
+                  (the list symbols) ; can't be single bare variable
+                  `(,$define! ,symbols
+                              (,$let ()
+                                     (,$sequence ,@body)
+                                     (,list ,@symbols)))))
+
+; Import the given symbols from an environment into the current environment
+($define! $import!
+          ($vau (env-exp . symbols) env
+                (eval `(,$set! ,env ,symbols (,list ,@symbols))
+                      (eval env-exp env))))
