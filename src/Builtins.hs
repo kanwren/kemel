@@ -1,6 +1,6 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module Builtins (loadPrelude) where
+module Builtins (makeGround, loadPrelude) where
 
 import Control.Monad.IO.Class (liftIO)
 import Data.Text.IO qualified as Text.IO
@@ -13,6 +13,11 @@ import Core (evalFile)
 import Types
 
 import Paths_kemel
+
+makeGround :: Eval Environment
+makeGround = do
+  env <- loadPrelude
+  liftIO $ newEnvironment [env]
 
 loadPrelude :: Eval Environment
 loadPrelude = do

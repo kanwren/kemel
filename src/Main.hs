@@ -21,10 +21,10 @@ import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLin
 import System.Environment (getArgs)
 import System.Exit (ExitCode)
 
-import Builtins (loadPrelude)
+import Builtins (makeGround)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Eval(..), Bubble(..), Expr(..), runProgram, Environment, newEnvironment)
+import Types (Eval(..), Bubble(..), Expr(..), runProgram, Environment)
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -42,10 +42,7 @@ handleExceptions = flip catches
 
 -- | Run a program in a child environment of the standard environment
 loadAndRun :: (Environment -> Eval a) -> IO (Either Bubble a)
-loadAndRun act = runProgram $ do
-  env <- loadPrelude
-  env' <- liftIO $ newEnvironment [env] -- TODO: should this be a child or not?
-  act env'
+loadAndRun act = runProgram $ makeGround >>= act
 
 repl :: IO ()
 repl = do
