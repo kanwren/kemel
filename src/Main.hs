@@ -24,7 +24,7 @@ import System.Exit (ExitCode)
 import Builtins (loadPrelude)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Eval(..), Bubble(..), Expr(..), runProgram, Environment)
+import Types (Eval(..), Bubble(..), Expr(..), runProgram, Environment, newEnvironment)
 
 tryError :: MonadError e m => m a -> m (Either e a)
 tryError act = fmap Right act `catchError` (pure . Left)
@@ -40,9 +40,12 @@ handleExceptions = flip catches
   , Handler $ \(e :: SomeException) -> liftIO $ liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
   ]
 
--- | Load the prelude and execute a program
+-- | Run a program in a child environment of the standard environment
 loadAndRun :: (Environment -> Eval a) -> IO (Either Bubble a)
-loadAndRun act = runProgram (loadPrelude >>= act)
+loadAndRun act = runProgram $ do
+  env <- loadPrelude
+  env' <- liftIO $ newEnvironment [env] -- TODO: should this be a child or not?
+  act env'
 
 repl :: IO ()
 repl = do
