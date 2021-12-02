@@ -25,9 +25,12 @@
 
 ($define! $quote ($vau (x) #ignore x))
 
-($define! car  (wrap ($vau ((x       . #ignore      )) #ignore x )))
-($define! cdr  (wrap ($vau ((#ignore . xs           )) #ignore xs)))
-($define! cadr (wrap ($vau ((#ignore . (x . #ignore))) #ignore x )))
+($define! car  (wrap ($vau ((x       . #ignore)) #ignore x )))
+($define! cdr  (wrap ($vau ((#ignore . xs     )) #ignore xs)))
+($define! cadr (wrap ($vau ((#ignore . (x       . #ignore))) #ignore x )))
+($define! cddr (wrap ($vau ((#ignore . (#ignore . xs     ))) #ignore xs)))
+($define! caddr (wrap ($vau ((#ignore . (#ignore . (x       . #ignore)))) #ignore x )))
+($define! cdddr (wrap ($vau ((#ignore . (#ignore . (#ignore . xs     )))) #ignore xs)))
 
 ($define! list (wrap ($vau xs #ignore xs))) ; $lambda xs xs
 ($define! list*
@@ -56,11 +59,13 @@
                    ($vau (formals env-name . body) env
                          (eval
                            `(,$vau ,formals ,env-name
-                                   ,($if (> (length body) 1)
-                                         (cons $sequence body)
-                                         (car body)))
+                                   ,($if (null? body)
+                                         nil
+                                         ($if (> (length body) 1)
+                                              (cons $sequence body)
+                                              (car body))))
                            env))))
-          $vau))
+           $vau))
 
 ($define! get-current-environment
           (wrap ($vau () e e)))
@@ -117,9 +122,12 @@
 
 ($define! map
           ($lambda (f xs)
-                   ($if (null? xs)
-                        ()
-                        (cons (f (car xs)) (map f (cdr xs))))))
+                   ($define! go
+                             ($lambda (xs)
+                                      ($if (null? xs)
+                                           nil
+                                           (cons (f (car xs)) (go (cdr xs))))))
+                   (go xs)))
 
 ($define! $let
           ($vau (bindings . body) env
@@ -169,3 +177,71 @@
           ($vau (env-exp . symbols) env
                 (eval `(,$set! ,env ,symbols (,list ,@symbols))
                       (eval env-exp env))))
+
+;;;;; Lists
+
+($define! foldr
+         ($lambda (f z xs)
+                  ($define! go
+                            ($lambda (xs)
+                                     ($if (null? xs)
+                                           z
+                                           (f (car xs) (go (cdr xs))))))
+                  (go xs)))
+
+($define! foldl
+         ($lambda (f z xs)
+                  ($define! go
+                            ($lambda (acc xs)
+                                     ($if (null? xs)
+                                           acc
+                                           (go (f acc (car xs)) (cdr xs)))))
+                  (go z xs)))
+
+($define! take
+          ($lambda (n xs)
+                   ($if ($or? (<= n 0) (null? xs))
+                         nil
+                         (cons (car xs) (take (- n 1) (cdr xs))))))
+
+($define! drop
+          ($lambda (n xs)
+                   ($if ($or? (<= n 0) (null? xs))
+                         xs
+                         (drop (- n 1) (cdr xs)))))
+
+($define! windows
+          ($lambda (n xs)
+                   ($define! go ($lambda (rem xs)
+                                         ($if (< rem n)
+                                              nil
+                                              (cons (take n xs) (go (- rem 1) (cdr xs))))))
+                   (go (length xs) xs)))
+
+($define! sum ($lambda (xs) (apply + xs)))
+($define! product ($lambda (xs) (apply * xs)))
+
+; TODO: bounds check
+($define! index
+          ($lambda (n xs)
+                  ($if (= n 0)
+                       (car xs)
+                       (index (- n 1) (cdr xs)))))
+
+($define! filter
+          ($lambda (pred xs)
+                   ($define! go
+                             ($lambda (xs)
+                                      ($if (null? xs)
+                                           nil
+                                           ($if (pred (car xs))
+                                                (cons (car xs) (go (cdr xs)))
+                                                (go (cdr xs))))))
+                   (go xs)))
+
+($define! zip
+          ($lambda (xs ys)
+                   ($if ($or? (null? xs) (null? ys))
+                        nil
+                        (cons (cons (car xs) (car ys))
+                              (zip (cdr xs) (cdr ys))))))

@@ -171,4 +171,5 @@ evalFile :: Environment -> Text -> Eval Expr
 evalFile env contents =
   case parseFile contents of
     Right res -> progn env res
+    -- TODO: fix this error message
     Left e -> evalError $ "load: parse error: " <> Text.pack e
