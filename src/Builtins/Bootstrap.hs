@@ -43,7 +43,7 @@ define env [bs, ps] = LInert <$ do
   ps' <- eval env ps
   bindings <- matchParams "$define!" tree ps'
   traverse_ (\(name, val) -> defineVar name val env) bindings
-define _ args = numArgsBound "$define!" (1, 2) args
+define _ args = numArgs "$define!" 2 args
 
 primEval :: Builtin
 primEval _ [e, LEnv env] = eval env e
