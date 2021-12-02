@@ -7,7 +7,6 @@ module Builtins.Primitives (builtinPrimitives) where
 
 import Control.Monad (zipWithM)
 import Control.Monad.IO.Class
-import Control.Monad.Reader (ask)
 import Data.Bifunctor (second)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
@@ -18,10 +17,10 @@ import Data.Text.IO qualified as Text.IO
 import System.Exit qualified as Exit
 import TextShow (TextShow(..))
 
-import Errors
+import Builtins.Utils (builtinApp)
 import Core (evalFile)
+import Errors
 import Types
-import Builtins.Utils (builtinApp, Builtin)
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
@@ -55,18 +54,23 @@ builtinPrimitives = fmap (second builtinApp)
   ]
 
 makeEnvironment :: Builtin
-makeEnvironment [] = LEnv <$> liftIO newEnvironment
-makeEnvironment args = numArgs "make-environment" 0 args
+makeEnvironment _ args = do
+  let
+    toEnv (LEnv e) = pure e
+    toEnv x = evalError $ "make-environment: expected environment, but got " <> renderType x
+  parents <- traverse toEnv args
+  env <- liftIO $ newEnvironment parents
+  pure $ LEnv env
 
 cons :: Builtin
-cons [x, LList y] = pure $ LList (x:y)
-cons [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
-cons [x, y] = pure $ LDottedList (x :| []) y
-cons args = numArgs "cons" 2 args
+cons _ [x, LList y] = pure $ LList (x:y)
+cons _ [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
+cons _ [x, y] = pure $ LDottedList (x :| []) y
+cons _ args = numArgs "cons" 2 args
 
 typeOf :: Builtin
-typeOf [v] = pure $ LSymbol $ typeToSymbol v
-typeOf args = numArgs "type-of" 1 args
+typeOf _ [v] = pure $ LSymbol $ typeToSymbol v
+typeOf _ args = numArgs "type-of" 1 args
 
 asInts :: Symbol -> [Expr] -> Eval [Integer]
 asInts name = go []
@@ -76,55 +80,55 @@ asInts name = go []
     go _ (e:_) = evalError $ showt name <> ": expected integer, but got " <> renderType e
 
 iadd :: Builtin
-iadd args = asInts "+" args <&> LInt . foldl' (+) 0
+iadd _ args = asInts "+" args <&> LInt . foldl' (+) 0
 
 -- unary should be negation
 isub :: Builtin
-isub args = asInts "-" args <&> \case
+isub _ args = asInts "-" args <&> \case
   [x] -> LInt (-x)
   xs -> LInt $ foldl1' (-) xs
 
 imul :: Builtin
-imul args = asInts "*" args <&> LInt . foldl' (*) 1
+imul _ args = asInts "*" args <&> LInt . foldl' (*) 1
 
 -- unary should be reciprocal
 iidiv :: Builtin
-iidiv args = asInts "div" args >>= \case
+iidiv _ args = asInts "div" args >>= \case
   [x] -> pure $ LInt (1 `div` x)
   [] -> numArgsAtLeast "div" 1 []
   xs -> pure $ LInt $ foldl1' div xs
 
 imod, iquot, irem :: Builtin
-imod args = asInts "mod" args >>= \case
+imod _ args = asInts "mod" args >>= \case
   [] -> numArgsAtLeast "mod" 1 []
   xs -> pure $ LInt $ foldl1' mod xs
-iquot args = asInts "quot" args >>= \case
+iquot _ args = asInts "quot" args >>= \case
   [] -> numArgsAtLeast "quot" 1 []
   xs -> pure $ LInt $ foldl1' quot xs
-irem args = asInts "rem" args >>= \case
+irem _ args = asInts "rem" args >>= \case
   [] -> numArgsAtLeast "rem" 1 []
   xs -> pure $ LInt $ foldl1' rem xs
 
-comparison :: Symbol -> (Integer -> Integer -> Bool) -> Builtin
+comparison :: Symbol -> (Integer -> Integer -> Bool) -> [Expr] -> Eval Expr
 comparison name is args = asInts name args >>= \case
   [] -> numArgsAtLeast name 1 []
   xs -> pure $ LBool $ and $ zipWith is xs (tail xs)
 
 ieq, ine, igt, ilt, ige, ile :: Builtin
-ieq = comparison "=" (==)
-ine = comparison "/=" (/=)
-igt = comparison ">" (>)
-ilt = comparison "<" (<)
-ige = comparison ">=" (>=)
-ile = comparison "<=" (<=)
+ieq _ = comparison "=" (==)
+ine _ = comparison "/=" (/=)
+igt _ = comparison ">" (>)
+ilt _ = comparison "<" (<)
+ige _ = comparison ">=" (>=)
+ile _ = comparison "<=" (<=)
 
 primLength :: Builtin
-primLength [LList xs] = pure $ LInt $ fromIntegral $ length xs
-primLength [LString xs] = pure $ LInt $ fromIntegral $ Text.length xs
-primLength [_] = evalError "length: expected a sequence"
-primLength args = numArgs "length" 1 args
+primLength _ [LList xs] = pure $ LInt $ fromIntegral $ length xs
+primLength _ [LString xs] = pure $ LInt $ fromIntegral $ Text.length xs
+primLength _ [_] = evalError "length: expected a sequence"
+primLength _ args = numArgs "length" 1 args
 
-stringComparison :: Symbol -> (forall e. Ord e => e -> e -> Bool) -> Builtin
+stringComparison :: Symbol -> (forall e. Ord e => e -> e -> Bool) -> [Expr] -> Eval Expr
 stringComparison _ cmp [LString x, LString y] = pure $ LBool (cmp x y)
 stringComparison _ cmp [LKeyword x, LKeyword y] = pure $ LBool (cmp x y)
 stringComparison _ cmp [LSymbol x, LSymbol y] = pure $ LBool (cmp x y)
@@ -132,14 +136,14 @@ stringComparison name _ [x, y] = evalError $ showt name <> ": invalid argument t
 stringComparison name _ args = numArgs name 2 args
 
 stringEq, stringGt, stringLt, stringGe, stringLe :: Builtin
-stringEq = stringComparison "string=" (==)
-stringGt = stringComparison "string>" (>)
-stringLt = stringComparison "string<" (<)
-stringGe = stringComparison "string>=" (<=)
-stringLe = stringComparison "string<=" (<=)
+stringEq _ = stringComparison "string=" (==)
+stringGt _ = stringComparison "string>" (>)
+stringLt _ = stringComparison "string<" (<)
+stringGe _ = stringComparison "string>=" (<=)
+stringLe _ = stringComparison "string<=" (<=)
 
 equal :: Builtin
-equal args =
+equal _ args =
   case args of
     [x, y] -> LBool <$> equal' x y
     _ -> numArgs "equal?" 2 args
@@ -166,23 +170,22 @@ equal args =
     equal' x y = evalError $ "equal?: incompatible types " <> renderType x <> " and " <> renderType y
 
 primGensym :: Builtin
-primGensym [] = LSymbol <$> genSym
-primGensym args = numArgs "gensym" 0 args
+primGensym _ [] = LSymbol <$> genSym
+primGensym _ args = numArgs "gensym" 0 args
 
 printExpr :: Builtin
-printExpr [e] = liftIO (print e) $> LInert
-printExpr args = numArgs "print" 1 args
+printExpr _ [e] = liftIO (print e) $> LInert
+printExpr _ args = numArgs "print" 1 args
 
 load :: Builtin
-load [LString path] = do
+load env [LString path] = do
   contents <- liftIO (Text.IO.readFile (Text.unpack path))
-  env <- ask
   evalFile env contents
-load [e] = evalError $ "load: expected string as path, but got " <> renderType e
-load args = numArgs "load" 1 args
+load _ [e] = evalError $ "load: expected string as path, but got " <> renderType e
+load _ args = numArgs "load" 1 args
 
 exit :: Builtin
-exit [] = liftIO Exit.exitSuccess
-exit [LInt n] = liftIO $ Exit.exitWith $ Exit.ExitFailure (fromIntegral n)
-exit args = numArgsBound "exit" (0, 1) args
+exit _ [] = liftIO Exit.exitSuccess
+exit _ [LInt n] = liftIO $ Exit.exitWith $ Exit.ExitFailure (fromIntegral n)
+exit _ args = numArgsBound "exit" (0, 1) args
 

@@ -1,14 +1,12 @@
-{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Builtins.Predicates (builtinPredicates) where
 
-import Control.Monad.Reader (ask)
 import Data.CaseInsensitive (mk)
 import TextShow (showt)
 
-import Builtins.Utils (builtinApp, Builtin, builtinOp)
+import Builtins.Utils (builtinApp, builtinOp)
 import Core (eval)
 import Errors
 import Types
@@ -45,25 +43,6 @@ typep name v = go
         _ -> pure False
     go _ = evalError $ showt name <> ": invalid type specifier"
 
-primThe :: Builtin
-primThe [spec, v] = do
-  env <- ask
-  v' <- eval env v
-  valid <- typep "the" v' spec
-  if valid
-    then pure v'
-    else evalError $ "the: expected type " <> showt spec <> ", but value " <> showt v' <> " has type " <> renderType v'
-primThe args = numArgs "the" 2 args
-
-primTypep :: Builtin
-primTypep [v, e] = LBool <$> typep "type?" v e
-primTypep args = numArgs "type?" 2 args
-
-typePred :: Symbol -> Symbol -> Builtin
-typePred name s = \case
-  [v] -> LBool <$> typep name v (LSymbol s)
-  args -> numArgs name 1 args
-
 builtinPredicates :: [(Symbol, Expr)]
 builtinPredicates = helpers <> typePreds
   where
@@ -92,4 +71,22 @@ builtinPredicates = helpers <> typePreds
       let
         typeName = SimpleSymbol $ mk name
         predName = SimpleSymbol $ mk $ name <> "?"
-      in (predName, builtinApp (typePred predName typeName))
+      in (predName, builtinApp (\_ -> typePred predName typeName))
+
+primThe :: Builtin
+primThe env [spec, v] = do
+  v' <- eval env v
+  valid <- typep "the" v' spec
+  if valid
+    then pure v'
+    else evalError $ "the: expected type " <> showt spec <> ", but value " <> showt v' <> " has type " <> renderType v'
+primThe _ args = numArgs "the" 2 args
+
+primTypep :: Builtin
+primTypep _ [v, e] = LBool <$> typep "type?" v e
+primTypep _ args = numArgs "type?" 2 args
+
+typePred :: Symbol -> Symbol -> [Expr] -> Eval Expr
+typePred name s = \case
+  [v] -> LBool <$> typep name v (LSymbol s)
+  args -> numArgs name 1 args

@@ -11,7 +11,7 @@ import TextShow (TextShow(..))
 import Types
 
 evalError :: Text -> Eval a
-evalError = throwError . EvalError . Error
+evalError = throwError . EvalError
 
 numArgs :: Symbol -> Int -> [Expr] -> Eval a
 numArgs name n xs

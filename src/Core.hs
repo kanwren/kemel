@@ -2,22 +2,16 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 module Core where
 
 import Control.Monad.Except
-import Control.Monad.Reader (ask)
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
-import Data.Functor ((<&>))
-import Data.IORef (newIORef, readIORef, writeIORef, IORef)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -37,18 +31,21 @@ unwrap :: Combiner -> Eval Combiner
 unwrap (ApplicativeCombiner c) = pure c
 unwrap x = evalError $ "unwrap: not an applicative: " <> showt x
 
-mkBindings :: [(Symbol, Expr)] -> Eval (Map Symbol (IORef Expr))
-mkBindings pairs = liftIO $ Map.fromList <$> traverse (\(x, y) -> newIORef y <&> (x,)) pairs
-
-lookupVar :: Symbol -> Environment -> Eval Expr
-lookupVar i (Environment envVar) = do
+lookupVar :: Symbol -> Environment -> Eval (Maybe Expr)
+lookupVar i (Environment envVar parents) = do
   mapping <- liftIO $ readIORef envVar
   case mapping Map.!? i of
-    Nothing -> evalError $ "variable not in scope: " <> showt i
-    Just x  -> liftIO $ readIORef x
+    Nothing -> do
+      let
+        go [] = pure Nothing
+        go (env:envs) = lookupVar i env >>= \case
+          Just x -> pure $ Just x
+          Nothing -> go envs
+      go parents
+    Just x  -> fmap Just $ liftIO $ readIORef x
 
 defineVar :: Symbol -> Expr -> Environment -> Eval ()
-defineVar i val (Environment envVar) = do
+defineVar i val (Environment envVar _) = do
   mapping <- liftIO $ readIORef envVar
   case mapping Map.!? i of
     Nothing -> do
@@ -87,10 +84,10 @@ matchParams name tree args = do
     zipLeftover [] (y:ys) = ([], Just (Right (y:ys)))
     zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
 
-    toError :: Text -> WriterT [(Symbol, Expr)] (Except Error) ()
-    toError e = throwError $ Error $ showt name <> ": " <> e
+    toError :: Text -> WriterT [(Symbol, Expr)] (Except Text) ()
+    toError e = throwError $ showt name <> ": " <> e
 
-    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Error) ()
+    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Text) ()
     go (BoundParam b) p = bind b p
     go (ParamList bs) (LList ps) =
       case zipLeftover bs ps of
@@ -114,15 +111,14 @@ matchParams name tree args = do
             (x:xs) -> bind b (LDottedList (x:|xs) p)
     go (ParamDottedList _ _) x = toError $ "expected a list to unpack, but got " <> renderType x
 
-mkVau :: Binder -> Expr -> Expr -> Eval Combiner
-mkVau dynamicEnvName params body = do
+mkVau :: Environment -> Binder -> Expr -> Expr -> Eval Combiner
+mkVau staticEnv dynamicEnvName params body = do
   paramTree <- parseParamTree "$vau" params
-  env <- ask
   let
     closure = Closure
       { closureParams = paramTree
       , closureBody = body
-      , closureStaticEnv = env
+      , closureStaticEnv = staticEnv
       , closureDynamicEnv = dynamicEnvName
       }
     fun = UserOp closure
@@ -137,7 +133,9 @@ progn env = go
     go (x:y) = eval env x *> go y
 
 eval :: Environment -> Expr -> Eval Expr
-eval env (LSymbol sym)      = lookupVar sym env
+eval env (LSymbol sym)      = lookupVar sym env >>= \case
+  Just x  -> pure x
+  Nothing -> evalError $ "variable not in scope: " <> showt sym
 eval env (LDottedList xs _) = eval env (LList (NonEmpty.toList xs))
 eval _   (LList [])         = pure nil
 eval env (LList (f:args))   = eval env f >>= \case
@@ -151,9 +149,9 @@ combine env (OperativeCombiner c) args = operate env c args
 combine env (ApplicativeCombiner c) args = traverse (eval env) args >>= combine env c
 
 operate :: Environment -> Operative -> [Expr] -> Eval Expr
-operate env c args =
+operate env c args = do
   case c of
-    BuiltinOp f -> inEnvironment env $ f args
+    BuiltinOp f -> f env args
     UserOp Closure{..} -> do
       let
         dynamicEnvBinding :: Maybe (Symbol, Expr)
@@ -162,10 +160,9 @@ operate env c args =
             IgnoreBinder -> Nothing
             NamedBinder n -> Just (n, LEnv env)
       paramBinds <- matchParams "<combiner>" closureParams (LList args)
-      binds <- mkBindings $ maybe paramBinds (:paramBinds) dynamicEnvBinding
-      inEnvironment closureStaticEnv $ withLocalBindings binds $ do
-        env' <- ask
-        eval env' closureBody
+      let binds = maybe paramBinds (:paramBinds) dynamicEnvBinding
+      env' <- liftIO $ newEnvironmentWith binds [closureStaticEnv]
+      eval env' closureBody
 
 evalFile :: Environment -> Text -> Eval Expr
 evalFile env contents =

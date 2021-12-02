@@ -7,20 +7,21 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TupleSections #-}
 
 module Types where
 
 import Control.Monad.Catch (MonadMask, MonadCatch, MonadThrow)
 import Control.Monad.Except ( ExceptT(ExceptT), MonadError )
 import Control.Monad.IO.Class
-import Control.Monad.Reader (ReaderT(..), MonadReader, local, asks)
 import Control.Monad.State (MonadState, StateT(..), state)
 import Data.CaseInsensitive (CI, foldedCase, mk)
 import Data.Default (Default(..))
-import Data.IORef (IORef, readIORef, newIORef)
+import Data.IORef (IORef, newIORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.String (IsString(..))
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -31,7 +32,7 @@ import TextShow qualified (fromText, unwordsB, FromTextShow(..))
 data Symbol
   = SimpleSymbol (CI Text)
   | ArbSymbol Text
-  deriving (Eq, Ord)
+  deriving stock (Eq, Ord)
 
 instance IsString Symbol where
   fromString = SimpleSymbol . fromString
@@ -42,7 +43,7 @@ instance TextShow Symbol where
     ArbSymbol s -> "|" <> TextShow.fromText (Text.replace "|" "\\|" s) <> "|"
 
 newtype Keyword = Keyword { getKeyword :: Symbol }
-  deriving (Eq, Ord)
+  deriving stock (Eq, Ord)
 
 instance TextShow Keyword where
   showb (Keyword s) = ":" <> showb s
@@ -69,9 +70,11 @@ data Closure = Closure
   , closureBody :: Expr
   }
 
+type Builtin = Environment -> [Expr] -> Eval Expr
+
 -- | A callable operative, which is either a builtin defined from Haskell (a
 -- plain Haskell function) or a user-defined vau closure.
-data Operative = BuiltinOp ([Expr] -> Eval Expr) | UserOp !Closure
+data Operative = BuiltinOp Builtin | UserOp !Closure
 
 -- | A combiner at the head of a call is either _operative_ or _applicative_;
 -- applicatives will first evaluate their arguments before calling the
@@ -156,14 +159,13 @@ instance TextShow Expr where
 
 -- Evaluation context (scopes)
 
-newtype Error = Error { getError :: Text }
-
 -- | All computations that exceptionally bubble up. Currently, this is only
 -- exceptions, but other forms of control flow may use this mechanism in the
 -- future.
-newtype Bubble = EvalError Error
+newtype Bubble = EvalError Text
 
--- | A handle to a mapping of variable names to values.
+-- | A handle to a mapping of variable names to values, along with any parent
+-- environments.
 --
 -- Both the environment and the values in it must be wrapped in `IORef`s.
 -- If the environment is not in an `IORef`, then a function `f` defined before a
@@ -172,11 +174,24 @@ newtype Bubble = EvalError Error
 -- wrapped in `IORef`s, then changes to variables captured in sub-environments
 -- (for example, global variables captured from closures), would not be visible
 -- to the rest of the global scope.
-newtype Environment = Environment { getEnvironment :: IORef (Map Symbol (IORef Expr)) }
-  deriving (Eq)
+data Environment =
+  Environment
+    (IORef (Map Symbol (IORef Expr)))
+    -- ^ The variable bindings in this environment
+    [Environment]
+    -- ^ The parent environments
+  deriving stock (Eq)
 
-newEnvironment :: IO Environment
-newEnvironment = Environment <$> newIORef mempty
+newEnvironment :: [Environment] -> IO Environment
+newEnvironment parents = do
+  m <- newIORef mempty
+  pure $ Environment m parents
+
+newEnvironmentWith :: [(Symbol, Expr)] -> [Environment] -> IO Environment
+newEnvironmentWith bindings parents = do
+  vars <- traverse (\(x, y) -> (x,) <$> newIORef y) bindings
+  m <- newIORef $ Map.fromList vars
+  pure $ Environment m parents
 
 -- Symbol generation
 
@@ -197,31 +212,15 @@ genSym = state nextSym
 -- Eval
 
 -- | The monad for evaluating expressions.
-newtype Eval a = Eval { runEval :: Environment -> SymbolGenerator -> IO (Either Bubble a, SymbolGenerator) }
+newtype Eval a = Eval { runEval :: SymbolGenerator -> IO (Either Bubble a, SymbolGenerator) }
   deriving
     ( Functor, Applicative, Monad
-    , MonadReader Environment, MonadError Bubble
+    , MonadError Bubble
     , MonadState SymbolGenerator
     , MonadThrow, MonadCatch, MonadMask
     , MonadIO
     )
-    via ReaderT Environment (ExceptT Bubble (StateT SymbolGenerator IO))
+    via ExceptT Bubble (StateT SymbolGenerator IO)
 
 runProgram :: Eval a -> IO (Either Bubble a)
-runProgram program = do
-  env <- newEnvironment
-  (res, _) <- runEval program env def
-  pure res
-
--- | Run an evaluation under a different environment than the current one.
-inEnvironment :: Environment -> Eval a -> Eval a
-inEnvironment ctx' = local (const ctx')
-
--- | Run a computation in a new environment with extra bindings, such as when an
--- operative is run.
-withLocalBindings :: Map Symbol (IORef Expr) -> Eval a -> Eval a
-withLocalBindings bindings act = do
-  ctx <- liftIO . readIORef =<< asks getEnvironment
-  ctx' <- liftIO $ newIORef $ bindings <> ctx
-  let newEnv = Environment ctx'
-  local (const newEnv) act
+runProgram program = fst <$> runEval program def
