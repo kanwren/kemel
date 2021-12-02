@@ -1,12 +1,9 @@
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TupleSections #-}
 
 module Types where
@@ -51,14 +48,9 @@ instance TextShow Keyword where
 -- | Specifies whether to bind a variable when calling an operator, and if so,
 -- what name it should get. For example, `($lambda (#ignore) ...)` will take one
 -- parameter, but will not bind it to any names.
-data Binder
-  = IgnoreBinder
-  | NamedBinder Symbol
+data Binder = IgnoreBinder | NamedBinder Symbol
 
-data ParamTree
-  = BoundParam Binder
-  | ParamList [ParamTree]
-  | ParamDottedList (NonEmpty ParamTree) Binder -- last part of dotted list can't be a list
+data ParamTree = BoundParam Binder | ParamList [ParamTree] | ParamDottedList (NonEmpty ParamTree) Binder
 
 -- | The definition of a user-defined vau operative. Holds the parameter
 -- specification, vau body, and the static environment closed over when the vau
@@ -79,9 +71,7 @@ data Operative = BuiltinOp Builtin | UserOp !Closure
 -- | A combiner at the head of a call is either _operative_ or _applicative_;
 -- applicatives will first evaluate their arguments before calling the
 -- underlying combiner.
-data Combiner
-  = OperativeCombiner Operative
-  | ApplicativeCombiner Combiner
+data Combiner = OperativeCombiner Operative | ApplicativeCombiner Combiner
 
 instance TextShow Combiner where
   showb = \case
@@ -159,21 +149,10 @@ instance TextShow Expr where
 
 -- Evaluation context (scopes)
 
--- | All computations that exceptionally bubble up. Currently, this is only
--- exceptions, but other forms of control flow may use this mechanism in the
--- future.
-newtype Bubble = EvalError Text
+newtype Error = EvalError Text
 
 -- | A handle to a mapping of variable names to values, along with any parent
 -- environments.
---
--- Both the environment and the values in it must be wrapped in `IORef`s.
--- If the environment is not in an `IORef`, then a function `f` defined before a
--- function `g` would not be able to see the later addition of the new function,
--- despite the fact that both are in the global scope. If the values are not
--- wrapped in `IORef`s, then changes to variables captured in sub-environments
--- (for example, global variables captured from closures), would not be visible
--- to the rest of the global scope.
 data Environment =
   Environment
     (IORef (Map Symbol (IORef Expr)))
@@ -204,23 +183,19 @@ instance Default SymbolGenerator where
 -- | Generate a new symbol, modifying the symbol generator in the computation's
 -- state.
 genSym :: MonadState SymbolGenerator m => m Symbol
-genSym = state nextSym
-  where
-    nextSym :: SymbolGenerator -> (Symbol, SymbolGenerator)
-    nextSym (SymbolGenerator n) = (SimpleSymbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
+genSym = state $ \(SymbolGenerator n) -> (SimpleSymbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
 
 -- Eval
 
 -- | The monad for evaluating expressions.
-newtype Eval a = Eval { runEval :: SymbolGenerator -> IO (Either Bubble a, SymbolGenerator) }
+newtype Eval a = Eval { runEval :: SymbolGenerator -> IO (Either Error a, SymbolGenerator) }
   deriving
     ( Functor, Applicative, Monad
-    , MonadError Bubble
+    , MonadError Error
     , MonadState SymbolGenerator
-    , MonadThrow, MonadCatch, MonadMask
-    , MonadIO
+    , MonadIO, MonadThrow, MonadCatch, MonadMask
     )
-    via ExceptT Bubble (StateT SymbolGenerator IO)
+    via ExceptT Error (StateT SymbolGenerator IO)
 
-runProgram :: Eval a -> IO (Either Bubble a)
+runProgram :: Eval a -> IO (Either Error a)
 runProgram program = fst <$> runEval program def

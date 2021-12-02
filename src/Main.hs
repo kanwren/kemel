@@ -5,10 +5,9 @@
 
 module Main where
 
-import Control.Exception (SomeException, displayException, throw)
-import Control.Monad.Catch (catches, Handler(..), MonadCatch)
+import Control.Exception (SomeException, displayException)
+import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Error.Class (catchError)
-import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Data.Attoparsec.Text (parse, IResult(..))
@@ -19,40 +18,33 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
 import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLine)
 import System.Environment (getArgs)
-import System.Exit (ExitCode)
 
 import Builtins (makeGround)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Eval(..), Bubble(..), Expr(..), runProgram, Environment)
+import Types (Eval(..), Expr(..), runProgram, Environment, Error(..))
 
-tryError :: MonadError e m => m a -> m (Either e a)
-tryError act = fmap Right act `catchError` (pure . Left)
-
-handleBubble :: MonadIO m => (a -> m ()) -> Either Bubble a -> m ()
-handleBubble h = \case
+handleError :: MonadIO m => (a -> m ()) -> Either Error a -> m ()
+handleError h = \case
   Left (EvalError e) -> liftIO $ putStrLn $ Text.unpack e
   Right v -> h v
 
 handleExceptions :: (MonadIO m, MonadCatch m) => m () -> m ()
-handleExceptions = flip catches
-  [ Handler $ \(e :: ExitCode) -> throw e
-  , Handler $ \(e :: SomeException) -> liftIO $ liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
-  ]
+handleExceptions = flip catch $ \(e :: SomeException) -> liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
 
 -- | Run a program in a child environment of the standard environment
-loadAndRun :: (Environment -> Eval a) -> IO (Either Bubble a)
+loadAndRun :: (Environment -> Eval a) -> IO (Either Error a)
 loadAndRun act = runProgram $ makeGround >>= act
 
 repl :: IO ()
 repl = do
-  res <- loadAndRun $ \env -> runInputT defaultSettings $ loop env Nothing
-  handleBubble (\_ -> pure ()) res
+  res <- loadAndRun $ \env -> runInputT defaultSettings (loop env Nothing)
+  handleError (\_ -> pure ()) res
   where
-    run :: Environment -> [Expr] -> InputT Eval ()
-    run env exprs = lift $ handleExceptions $ do
-      res <- tryError (progn env exprs)
-      handleBubble (\case LInert -> pure (); e -> liftIO (print e)) res
+    runLine :: Environment -> [Expr] -> InputT Eval ()
+    runLine env exprs = lift $ handleExceptions $ do
+      res <- (Right <$> progn env exprs) `catchError` (pure . Left)
+      handleError (\case LInert -> pure (); e -> liftIO (print e)) res
     loop :: Environment -> Maybe Text -> InputT Eval ()
     loop env pending = do
       input <- getInputLine $ case pending of Nothing -> "> "; Just _ -> "...| "
@@ -67,10 +59,10 @@ repl = do
                 traverse_ (putStrLn . ("  " ++)) ctx
                 putStrLn msg
               loop env Nothing
-            Done _ es -> run env es *> loop env Nothing
+            Done _ es -> runLine env es *> loop env Nothing
             Partial f ->
               case f "" of
-                Done _ es -> run env es *> loop env Nothing
+                Done _ es -> runLine env es *> loop env Nothing
                 _ -> loop env (Just (fromMaybe "" pending <> line <> "\n"))
 
 runFile :: String -> IO ()
@@ -78,7 +70,7 @@ runFile path = do
   contents <- Text.IO.readFile path
   handleExceptions $ do
     res <- loadAndRun $ \env -> evalFile env contents
-    handleBubble (\_ -> pure ()) res
+    handleError (\_ -> pure ()) res
 
 main :: IO ()
 main = getArgs >>= \case

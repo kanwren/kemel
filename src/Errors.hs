@@ -13,10 +13,10 @@ import TextShow (TextShow(..))
 
 import Types
 
-evalError :: MonadError Bubble m => Text -> m a
+evalError :: MonadError Error m => Text -> m a
 evalError = throwError . EvalError
 
-typeError :: MonadError Bubble m => Symbol -> Text -> Expr -> m a
+typeError :: MonadError Error m => Symbol -> Text -> Expr -> m a
 typeError name expected got = evalError $ showt name <> ": expected " <> expected <> ", but got " <> renderType got
 
 numArgs :: Symbol -> Int -> [Expr] -> Eval a

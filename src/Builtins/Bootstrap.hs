@@ -10,7 +10,7 @@ import Data.Maybe (isJust)
 import TextShow (showt)
 
 import Builtins.Utils (builtinOp, builtinApp, allM)
-import Core (eval, defineVar, mkVau, wrap, unwrap, matchParams, parseParamTree, lookupVar)
+import Core (eval, parseParamTree, matchParams, defineVar, lookupVar, progn)
 import Errors
 import Types
 
@@ -21,6 +21,8 @@ builtinBootstrap =
   , ("eval", builtinApp primEval)
   , ("wrap", builtinApp primWrap)
   , ("unwrap", builtinApp primUnwrap)
+  , ("$if", builtinOp primIf)
+  , ("$sequence", builtinOp progn)
   , ("make-environment", builtinApp makeEnvironment)
   , ("cons", builtinApp cons)
   , ("$binds?", builtinOp binds)
@@ -34,7 +36,15 @@ vau staticEnv [params, env, body] = do
     LIgnore   -> pure IgnoreBinder
     LSymbol s -> pure $ NamedBinder s
     x -> evalError $ "$vau: invalid environment name: " <> showt x
-  LCombiner <$> mkVau staticEnv envName params body
+  paramTree <- parseParamTree "$vau" params
+  let
+    closure = Closure
+      { closureParams = paramTree
+      , closureBody = body
+      , closureStaticEnv = staticEnv
+      , closureDynamicEnv = envName
+      }
+  pure $ LCombiner $ OperativeCombiner $ UserOp closure
 vau _ args = numArgs "$vau" 3 args
 
 define :: Builtin
@@ -50,16 +60,20 @@ primEval _ [e, x] = getEnvironment "eval" x >>= \env -> eval env e
 primEval _ args = numArgs "eval" 2 args
 
 primWrap :: Builtin
-primWrap _ [x] = do
-  c <- getCombiner "wrap" x
-  LCombiner <$> wrap c
+primWrap _ [x] = LCombiner . ApplicativeCombiner <$> getCombiner "wrap" x
 primWrap _ args = numArgs "wrap" 1 args
 
 primUnwrap :: Builtin
-primUnwrap _ [x] = do
-  c <- getCombiner "unwrap" x
-  LCombiner <$> unwrap c
+primUnwrap _ [x] = getCombiner "unwrap" x >>= \case
+  ApplicativeCombiner c -> pure $ LCombiner c
+  OperativeCombiner _ -> evalError "unwrap: combiner not applicative"
 primUnwrap _ args = numArgs "unwrap" 1 args
+
+primIf :: Builtin
+primIf env [cond, x, y] = do
+  b <- getBool "$if" =<< eval env cond
+  if b then eval env x else eval env y
+primIf _ args = numArgs "$if" 3 args
 
 makeEnvironment :: Builtin
 makeEnvironment _ args = do

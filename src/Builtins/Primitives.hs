@@ -49,7 +49,6 @@ builtinPrimitives = fmap (second builtinApp)
   , ("gensym", primGensym)
   , ("print", printExpr)
   , ("load", load)
-  , ("exit", exit)
   ]
 
 primNot :: Builtin
@@ -175,9 +174,3 @@ load env [LString path] = do
   evalFile env contents
 load _ [e] = typeError "load" "string as path" e
 load _ args = numArgs "load" 1 args
-
-exit :: Builtin
-exit _ [] = liftIO Exit.exitSuccess
-exit _ [LInt n] = liftIO $ Exit.exitWith $ Exit.ExitFailure (fromIntegral n)
-exit _ args = numArgsBound "exit" (0, 1) args
-

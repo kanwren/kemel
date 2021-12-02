@@ -31,7 +31,6 @@ executable kemel
       Types
       Builtins
         Builtins.Bootstrap
-        Builtins.ControlFlow
         Builtins.TypeOps
         Builtins.Primitives
         Builtins.Utils

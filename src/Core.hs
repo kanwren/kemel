@@ -21,16 +21,6 @@ import Errors
 import Parser (parseFile)
 import Types
 
-nil :: Expr
-nil = LList []
-
-wrap :: Combiner -> Eval Combiner
-wrap c = pure $ ApplicativeCombiner c
-
-unwrap :: Combiner -> Eval Combiner
-unwrap (ApplicativeCombiner c) = pure c
-unwrap x = evalError $ "unwrap: not an applicative: " <> showt x
-
 lookupVar :: Symbol -> Environment -> Eval (Maybe Expr)
 lookupVar i (Environment envVar parents) = do
   mapping <- liftIO $ readIORef envVar
@@ -81,10 +71,10 @@ matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
     zipLeftover [] (y:ys) = ([], Just (Right (y:ys)))
     zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
 
-    toError :: Text -> WriterT [(Symbol, Expr)] (Except Bubble) ()
+    toError :: Text -> WriterT [(Symbol, Expr)] (Except Error) ()
     toError e = evalError $ showt name <> ": " <> e
 
-    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Bubble) ()
+    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Error) ()
     go (BoundParam b) p = bind b p
     go (ParamList bs) (LList ps) =
       case zipLeftover bs ps of
@@ -108,19 +98,6 @@ matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
             (x:xs) -> bind b (LDottedList (x:|xs) p)
     go (ParamDottedList _ _) x = typeError name "a list to unpack" x
 
-mkVau :: Environment -> Binder -> Expr -> Expr -> Eval Combiner
-mkVau staticEnv dynamicEnvName params body = do
-  paramTree <- parseParamTree "$vau" params
-  let
-    closure = Closure
-      { closureParams = paramTree
-      , closureBody = body
-      , closureStaticEnv = staticEnv
-      , closureDynamicEnv = dynamicEnvName
-      }
-    fun = UserOp closure
-  pure $ OperativeCombiner fun
-
 -- Evaluate a list of expressions and return the value of the final expression
 progn :: Environment -> [Expr] -> Eval Expr
 progn env = go
@@ -134,7 +111,7 @@ eval env (LSymbol sym)      = lookupVar sym env >>= \case
   Just x  -> pure x
   Nothing -> evalError $ "variable not in scope: " <> showt sym
 eval env (LDottedList xs _) = eval env (LList (NonEmpty.toList xs))
-eval _   (LList [])         = pure nil
+eval _   (LList [])         = pure $ LList []
 eval env (LList (f:args))   = eval env f >>= \case
   LCombiner c -> combine env c args
   e -> evalError $ "expected combiner in call: " <> showt e

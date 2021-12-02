@@ -65,7 +65,8 @@ builtinTypeOps = helpers <> typePreds
       let
         typeName = SimpleSymbol $ mk name
         predName = SimpleSymbol $ mk $ name <> "?"
-      in (predName, builtinApp (\_ -> typePred predName typeName))
+        app _ = fmap (LBool . and) . traverse (\v -> typep predName v (LSymbol typeName))
+      in (predName, builtinApp app)
 
 typeOf :: Builtin
 typeOf _ [v] = pure $ LSymbol $ typeToSymbol v
@@ -83,8 +84,3 @@ primThe _ args = numArgs "the" 2 args
 primTypep :: Builtin
 primTypep _ [v, e] = LBool <$> typep "type?" v e
 primTypep _ args = numArgs "type?" 2 args
-
-typePred :: Symbol -> Symbol -> [Expr] -> Eval Expr
-typePred name s = \case
-  [v] -> LBool <$> typep name v (LSymbol s)
-  args -> numArgs name 1 args

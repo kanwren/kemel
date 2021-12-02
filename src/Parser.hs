@@ -7,26 +7,23 @@
 module Parser (pExprs, parseFile) where
 
 import Control.Applicative ((<|>), many, some)
+import Control.Applicative.Combinators (sepEndBy, optional)
 import Control.Monad (void, guard)
 import Data.Attoparsec.Text as AT hiding (space)
 import Data.CaseInsensitive (CI, foldedCase, mk)
 import Data.Char (isSpace)
 import Data.Functor (($>), (<&>))
+import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.List.Split qualified as Split
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Control.Applicative.Combinators (sepEndBy, optional)
 
 import Types
-import Data.List (foldl')
-
-space1 :: Parser ()
-space1 = void $ takeWhile1 isSpace
 
 space :: Parser ()
-space = skipMany $ choice [space1, void (string ";" *> AT.manyTill anyChar (endOfLine <|> endOfInput))]
+space = skipMany $ choice [void (takeWhile1 isSpace), void (string ";" *> AT.manyTill anyChar (endOfLine <|> endOfInput))]
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* space
@@ -37,26 +34,6 @@ symbol s = string s <* space
 label :: String -> Parser a -> Parser a
 label l f = f <?> l
 
-pNumber :: Parser Expr
-pNumber = label "number literal" $ LInt <$> signed decimal
-
-pInert :: Parser Expr
-pInert = label "inert literal" $ string "#inert" $> LInert
-
-pIgnore :: Parser Expr
-pIgnore = label "ignore literal" $ string "#ignore" $> LIgnore
-
-pBool :: Parser Expr
-pBool = label "bool literal" $ fmap LBool $ (string "#f" $> False) <|> (string "#t" $> True)
-
-pKeyword :: Parser Expr
-pKeyword = label "keyword" $ char ':' *> (LKeyword . Keyword <$> pId)
-
--- TODO: character escapes
-pString :: Parser Expr
-pString = label "string literal" $ LString . Text.pack <$> (char '"' *> ((char '\\' *> anyChar) <|> anyChar) `manyTill` char '"')
-
--- TODO: allow identifiers beginning with numbers to be arbitrary symbols
 pId :: Parser Symbol
 pId = label "keyword" $ do
     res <- fmap collect identifier
@@ -72,20 +49,10 @@ pId = label "keyword" $ do
     arbString :: Parser Text
     arbString = char '|' *> (Text.pack <$> ((string "\\|" $> '|') <|> anyChar) `manyTill` char '|')
 
-    firstChar :: Parser (Either Text (CI Text))
-    firstChar = choice
-      [ Left <$> arbString
-      , Right . mk . Text.singleton <$> idHeadChar
-      ]
-
-    restChars :: Parser [Either Text (CI Text)]
-    restChars = many $ choice
-      [ Left <$> arbString
-      , Right . mk . Text.pack <$> some idChar
-      ]
-
     identifier :: Parser (NonEmpty (Either Text (CI Text)))
-    identifier = (:|) <$> firstChar <*> restChars
+    identifier = (:|)
+      <$> do choice [Left <$> arbString, Right . mk . Text.singleton <$> idHeadChar]
+      <*> do many $ choice [Left <$> arbString, Right . mk . Text.pack <$> some idChar]
 
     toArbSymbol :: NonEmpty (Either Text (CI Text)) -> Symbol
     toArbSymbol = ArbSymbol . Text.concat . fmap (either id foldedCase) . NonEmpty.toList
@@ -102,14 +69,6 @@ pId = label "keyword" $ do
         go acc []           = SimpleSymbol acc
         go acc (Right x:xs) = go (acc <> x) xs
         go acc (Left x:xs)  = toArbSymbol $ Right acc:|(Left x:xs)
-
-pSymbol :: Parser Expr
-pSymbol = LSymbol <$> pId
-
--- 'x is the same as ($quote x), where "$quote" is an operator in the standard
--- library that returns a value without evaluating it.
-pQuote :: Parser Expr
-pQuote = label "quoted expression" $ symbol "'" *> (quote <$> pExpr)
 
 between :: Parser a -> Parser b -> Parser c -> Parser c
 between s e m = s *> m <* e
@@ -129,24 +88,28 @@ pList = label "list" $ between (symbol "(") (char ')') $ do
     prepend [] (y:|ys) = y:|ys
     prepend (x:xs) (y:|ys) = x :| (xs ++ y : ys)
 
+pAtom :: Parser Expr
+pAtom = choice
+  [ label "string literal" $ LString . Text.pack <$> (char '"' *> ((char '\\' *> anyChar) <|> anyChar) `manyTill` char '"')
+  , label "keyword" $ char ':' *> (LKeyword . Keyword <$> pId)
+  , label "inert literal" $ string "#inert" $> LInert
+  , label "ignore literal" $ string "#ignore" $> LIgnore
+  , label "bool literal" $ fmap LBool $ (string "#f" $> False) <|> (string "#t" $> True)
+  , label "number literal" $ LInt <$> signed decimal
+  , label "symbol" $ LSymbol <$> pId
+  ]
+
 pExpr :: Parser Expr
 pExpr = choice
-  [ pQuote
+  -- 'x is the same as ($quote x), where "$quote" is an operator in the standard
+  -- library that returns a value without evaluating it.
+  [ label "quoted expression" $ symbol "'" *> (quote <$> pExpr)
   , pList
-  , pString
-  , pKeyword
-  , pInert
-  , pIgnore
-  , pBool
-  , pNumber
-  , pSymbol
+  , pAtom
   , symbol "`" *> pBackquoteExpr
   ]
 
 data Splice = ExprSplice | ListSplice
-
-pSplice :: Parser Splice
-pSplice = (symbol ",@" $> ListSplice) <|> (symbol "," $> ExprSplice)
 
 quote :: Expr -> Expr
 quote v = LList [LSymbol "$quote", v]
@@ -159,17 +122,14 @@ pBackquoteExpr = do
     Just ExprSplice -> pExpr
     Just ListSplice -> fail "list splice after backquote is not allowed"
   where
+    pSplice :: Parser Splice
+    pSplice = (symbol ",@" $> ListSplice) <|> (symbol "," $> ExprSplice)
+
     pPendingSpliceExpr :: Parser Expr
     pPendingSpliceExpr = choice
       [ pQuoteBackquoteed
       , pListBackquoteed
-      , quote <$> pString
-      , quote <$> pKeyword
-      , quote <$> pInert
-      , quote <$> pIgnore
-      , quote <$> pBool
-      , quote <$> pNumber
-      , quote <$> pSymbol
+      , quote <$> pAtom
       , quote <$> (symbol "`" *> pBackquoteExpr)
       ]
       where
@@ -185,16 +145,6 @@ pBackquoteExpr = do
           between (symbol "(") (char ')') $ do
             leading <- expr' `sepEndBy` space
             case NonEmpty.nonEmpty leading of
-              -- NOTE: a notable difference between this and CLisp is that `()`
-              -- will always just be NIL, regardless of depth of backquoting.
-              -- For consistency, we keep the intuitive behavior here,
-              -- especially since the other behavior means that for example:
-              --     ````nil => NIL
-              --     ````()  => NIL
-              --     ''''nil => '''NIL
-              --     ''''()  => '''NIL
-              -- meaning that NIL and () have to be special-cased to be the
-              -- same, regardless of the identifier
               Nothing -> pure $ LList [LSymbol "$quote", LList []]
               Just neLeading -> optional (symbol "." *> lexeme expr') >>= \case
                 Nothing -> pure $ spliceBackquotedList neLeading
