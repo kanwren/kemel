@@ -41,7 +41,7 @@ builtinPrimitives = fmap (second builtinApp)
   , ("<", ilt)
   , (">=", ige)
   , ("<=", ile)
-  , ("equal", equal)
+  , ("equal?", equal)
   , ("length", primLength)
   , ("string=", stringEq)
   , ("string>", stringGt)
@@ -142,14 +142,17 @@ equal :: Builtin
 equal args =
   case args of
     [x, y] -> LBool <$> equal' x y
-    _ -> numArgs "equal" 2 args
+    _ -> numArgs "equal?" 2 args
   where
     equal' :: Expr -> Expr -> Eval Bool
+    equal' LInert LInert = pure True
+    equal' LIgnore LIgnore = pure True
     equal' (LInt x) (LInt y) = pure (x == y)
     equal' (LBool x) (LBool y) = pure (x == y)
     equal' (LKeyword x) (LKeyword y) = pure (x == y)
     equal' (LString x) (LString y) = pure (x == y)
     equal' (LSymbol x) (LSymbol y) = pure (x == y)
+    equal' (LEnv x) (LEnv y) = pure (x == y)
     equal' (LList x) (LList y) =
       if length x /= length y
       then pure False
@@ -158,8 +161,9 @@ equal args =
       if length x /= length y
       then pure False
       else (&&) <$> (and <$> zipWithM equal' (NonEmpty.toList x) (NonEmpty.toList y)) <*> equal' x' y'
-    equal' (LCombiner _) (LCombiner _) = pure False
-    equal' x y = evalError $ "equal: incompatible types " <> renderType x <> " and " <> renderType y
+    equal' (LCombiner (ApplicativeCombiner c1)) (LCombiner (ApplicativeCombiner c2)) = equal' (LCombiner c1) (LCombiner c2)
+    equal' (LCombiner (OperativeCombiner _)) (LCombiner (OperativeCombiner _)) = pure False -- TODO
+    equal' x y = evalError $ "equal?: incompatible types " <> renderType x <> " and " <> renderType y
 
 primGensym :: Builtin
 primGensym [] = LSymbol <$> genSym

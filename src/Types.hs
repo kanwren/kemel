@@ -115,7 +115,8 @@ typeToSymbol = SimpleSymbol . \case
   LList [] -> "null"
   LList (_:_) -> "pair"
   LDottedList _ _ -> "pair"
-  LCombiner _ -> "combiner"
+  LCombiner (OperativeCombiner _) -> "<operative>"
+  LCombiner (ApplicativeCombiner _) -> "<applicative>"
 
 symbolToTypePred :: Symbol -> Maybe (Expr -> Bool)
 symbolToTypePred = \case
@@ -172,6 +173,7 @@ newtype Bubble = EvalError Error
 -- (for example, global variables captured from closures), would not be visible
 -- to the rest of the global scope.
 newtype Environment = Environment { getEnvironment :: IORef (Map Symbol (IORef Expr)) }
+  deriving (Eq)
 
 newEnvironment :: IO Environment
 newEnvironment = Environment <$> newIORef mempty
