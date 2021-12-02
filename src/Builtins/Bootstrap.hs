@@ -1,12 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Builtins.Bootstrap (builtinBootstrap) where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
+import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe (isJust)
 import TextShow (showt)
 
-import Builtins.Utils (builtinOp, builtinApp)
-import Core (eval, defineVar, mkVau, wrap, unwrap, matchParams, parseParamTree)
+import Builtins.Utils (builtinOp, builtinApp, allM)
+import Core (eval, defineVar, mkVau, wrap, unwrap, matchParams, parseParamTree, lookupVar)
 import Errors
 import Types
 
@@ -17,6 +21,9 @@ builtinBootstrap =
   , ("eval", builtinApp primEval)
   , ("wrap", builtinApp primWrap)
   , ("unwrap", builtinApp primUnwrap)
+  , ("make-environment", builtinApp makeEnvironment)
+  , ("cons", builtinApp cons)
+  , ("$binds?", builtinOp binds)
   ]
 
 -- NOTE: this is later redefined in the prelude to be able to compensate for
@@ -52,4 +59,32 @@ primUnwrap :: Builtin
 primUnwrap _ [LCombiner c] = LCombiner <$> unwrap c
 primUnwrap _ [x] = evalError $ "unwrap: expected combiner, but got " <> renderType x
 primUnwrap _ args = numArgs "unwrap" 1 args
+
+makeEnvironment :: Builtin
+makeEnvironment _ args = do
+  let
+    toEnv (LEnv e) = pure e
+    toEnv x = evalError $ "make-environment: expected environment, but got " <> renderType x
+  parents <- traverse toEnv args
+  env <- liftIO $ newEnvironment parents
+  pure $ LEnv env
+
+cons :: Builtin
+cons _ [x, LList y] = pure $ LList (x:y)
+cons _ [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
+cons _ [x, y] = pure $ LDottedList (x :| []) y
+cons _ args = numArgs "cons" 2 args
+
+binds :: Builtin
+binds env (envExpr:args) = do
+  targetEnv <- eval env envExpr >>= \case
+    LEnv targetEnv -> pure targetEnv
+    x -> evalError $ "$binds?: expected environment, but got " <> renderType x
+  let
+    getSym (LSymbol s) = pure s
+    getSym x = evalError $ "$binds?: expected symbol, but got " <> renderType x
+  syms <- traverse getSym args
+  let isBound sym = isJust <$> lookupVar sym targetEnv
+  LBool <$> allM isBound syms
+binds _ [] = numArgsAtLeast "$binds?" 1 []
 

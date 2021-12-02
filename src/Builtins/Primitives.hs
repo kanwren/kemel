@@ -10,7 +10,6 @@ import Control.Monad.IO.Class
 import Data.Bifunctor (second)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
-import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
@@ -24,10 +23,7 @@ import Types
 
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
-  [ ("make-environment", makeEnvironment)
-  , ("cons", cons)
-  , ("type-of", typeOf)
-  , ("+", iadd)
+  [ ("+", iadd)
   , ("-", isub)
   , ("*", imul)
   , ("div", iidiv)
@@ -52,25 +48,6 @@ builtinPrimitives = fmap (second builtinApp)
   , ("load", load)
   , ("exit", exit)
   ]
-
-makeEnvironment :: Builtin
-makeEnvironment _ args = do
-  let
-    toEnv (LEnv e) = pure e
-    toEnv x = evalError $ "make-environment: expected environment, but got " <> renderType x
-  parents <- traverse toEnv args
-  env <- liftIO $ newEnvironment parents
-  pure $ LEnv env
-
-cons :: Builtin
-cons _ [x, LList y] = pure $ LList (x:y)
-cons _ [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
-cons _ [x, y] = pure $ LDottedList (x :| []) y
-cons _ args = numArgs "cons" 2 args
-
-typeOf :: Builtin
-typeOf _ [v] = pure $ LSymbol $ typeToSymbol v
-typeOf _ args = numArgs "type-of" 1 args
 
 asInts :: Symbol -> [Expr] -> Eval [Integer]
 asInts name = go []

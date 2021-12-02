@@ -1,23 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Builtins.Predicates (builtinPredicates) where
+module Builtins.TypeOps (builtinTypeOps) where
 
 import Data.CaseInsensitive (mk)
 import TextShow (showt)
 
-import Builtins.Utils (builtinApp, builtinOp)
+import Builtins.Utils (builtinApp, builtinOp, allM, anyM)
 import Core (eval)
 import Errors
 import Types
-
-allM :: (Foldable f, Monad m) => (a -> m Bool) -> f a -> m Bool
-allM p = foldr (andM . p) (pure True)
-  where andM a b = a >>= \a' -> if a' then b else pure False
-
-anyM :: (Foldable f, Monad m) => (a -> m Bool) -> f a -> m Bool
-anyM p = foldr (orM . p) (pure False)
-  where orM a b = a >>= \a' -> if a' then pure True else b
 
 typep :: Symbol -> Expr -> Expr -> Eval Bool
 typep name v = go
@@ -43,11 +35,12 @@ typep name v = go
         _ -> pure False
     go _ = evalError $ showt name <> ": invalid type specifier"
 
-builtinPredicates :: [(Symbol, Expr)]
-builtinPredicates = helpers <> typePreds
+builtinTypeOps :: [(Symbol, Expr)]
+builtinTypeOps = helpers <> typePreds
   where
     helpers =
-      [ ("the", builtinOp primThe)
+      [ ("type-of", builtinApp typeOf)
+      , ("the", builtinOp primThe)
       , ("type?", builtinApp primTypep)
       ]
     typePreds = fmap mkPred
@@ -72,6 +65,10 @@ builtinPredicates = helpers <> typePreds
         typeName = SimpleSymbol $ mk name
         predName = SimpleSymbol $ mk $ name <> "?"
       in (predName, builtinApp (\_ -> typePred predName typeName))
+
+typeOf :: Builtin
+typeOf _ [v] = pure $ LSymbol $ typeToSymbol v
+typeOf _ args = numArgs "type-of" 1 args
 
 primThe :: Builtin
 primThe env [spec, v] = do

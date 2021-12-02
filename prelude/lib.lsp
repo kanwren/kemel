@@ -68,47 +68,16 @@
            env))))
    $vau))
 
-($define! get-current-environment
-  (wrap ($vau () e e)))
-
 ($define! $lambda
   ($vau (formals . body) env
     (wrap (eval `(,$vau ,formals #ignore ,@body) env))))
 
 ($define! $macro
   ($vau (formals . body) env
-    ($let ((env-var (gensym)))
-      (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env))))
-
-($define! not? ($lambda (x) ($if x #f #t)))
-
-($define! $and?
-  ($vau conds env
-    ($if (null? conds)
-      #t
-      ($if (eval (car conds) env)
-        (apply (wrap $and?) (cdr conds) env)
-        #f))))
-
-($define! $or?
-  ($vau conds env
-    ($if (null? conds)
-      #f
-      ($if (eval (car conds) env)
-        #t
-        (apply (wrap $or?) (cdr conds) env)))))
-
-($define! $when
-  ($vau (cond . body) env
-    ($if (eval cond env)
-      (eval `(,$sequence ,@body) env)
-      #inert)))
-
-($define! $unless
-  ($vau (cond . body) env
-    ($if (eval cond env)
-      #inert
-      (eval `(,$sequence ,@body) env))))
+    ; Don't have let yet, have to use the `(($lambda params ...) vals)` trick
+    ((wrap ($vau (env-var) #ignore
+        (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env)))
+     (gensym))))
 
 ($define! apply
   ($lambda (op args . optional-env)
@@ -130,11 +99,13 @@
           (cons (f (car xs)) (go (cdr xs))))))
     (go xs)))
 
-($define! $let
-  ($vau (bindings . body) env
-    (eval
-      `((,$lambda ,(map car bindings) ,@body) ,@(map cadr bindings))
-      env)))
+;;;;; Environments
+
+($define! get-current-environment
+  (wrap ($vau () e e)))
+
+($define! make-kernel-standard-environment
+  ($lambda () (get-current-environment)))
 
 ; Evaluate an expression in the provided environment
 ($define! $remote-eval
@@ -170,7 +141,82 @@
     (eval `(,$set! ,env ,symbols (,list ,@symbols))
           (eval env-exp env))))
 
+;;;;; Lets
+
+; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
+($define! $let
+  ($macro (bindings . body)
+    (the list bindings)
+    `((,$lambda ,(map car bindings) ,@body) ,@(map cadr bindings))))
+
+; Rewrite `($let* (params-with-values) ...)` into `($let ((param val)) ($let ((param val)) ...))`
+($define! $let*
+  ($macro (bindings . body)
+    (the list bindings)
+    ($if (null? bindings)
+      `(,$let ,bindings ,@body)
+      `(,$let (,(car bindings)) (,$let* ,(cdr bindings) ,@body)))))
+
+; Rewrite `($letrec (params-with-values) ...)` into `($let () ($define! params values) ...)`
+($define! $letrec
+  ($macro (bindings . body)
+    (the list bindings)
+    `(,$let ()
+            (,$define!
+              ,(map car bindings)
+              (,list ,@(map cadr bindings)))
+            ,@body)))
+
+; Rewrite `($letrec* (params-with-values) ...)` into `($letrec ((param val)) ($letrec ((param val)) ...))`
+($define! $letrec*
+  ($macro (bindings . body)
+    (the list bindings)
+    ($if (null? bindings)
+      `(,$letrec ,bindings ,@body)
+      `(,$letrec (,(car bindings)) (,$letrec* ,(cdr bindings) ,@body)))))
+
+($define! $let-redirect
+  ($vau (env-exp bindings . body) env
+    (eval `(,(eval `(,$lambda ,(map car bindings) ,@body)
+                   (eval env-exp env))
+             ,@(map cadr bindings))
+          env)))
+
+($define! $let-safe
+  ($macro (bindings . body)
+    `(,$let-redirect (,make-kernel-standard-environment) ,bindings ,@body)))
+
 ;;;;; Conditionals
+
+($define! not? ($lambda (x) ($if x #f #t)))
+
+($define! $and?
+  ($vau conds env
+    ($if (null? conds)
+      #t
+      ($if (eval (car conds) env)
+        (apply (wrap $and?) (cdr conds) env)
+        #f))))
+
+($define! $or?
+  ($vau conds env
+    ($if (null? conds)
+      #f
+      ($if (eval (car conds) env)
+        #t
+        (apply (wrap $or?) (cdr conds) env)))))
+
+($define! $when
+  ($vau (cond . body) env
+    ($if (eval cond env)
+      (eval `(,$sequence ,@body) env)
+      #inert)))
+
+($define! $unless
+  ($vau (cond . body) env
+    ($if (eval cond env)
+      #inert
+      (eval `(,$sequence ,@body) env))))
 
 ($define! $cond
   ($vau conds env

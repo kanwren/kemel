@@ -32,7 +32,7 @@ executable kemel
       Builtins
         Builtins.Bootstrap
         Builtins.ControlFlow
-        Builtins.Predicates
+        Builtins.TypeOps
         Builtins.Primitives
         Builtins.Utils
       Errors

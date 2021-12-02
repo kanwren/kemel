@@ -7,7 +7,7 @@ import Data.Text.IO qualified as Text.IO
 
 import Builtins.Bootstrap (builtinBootstrap)
 import Builtins.ControlFlow (builtinControlFlow)
-import Builtins.Predicates (builtinPredicates)
+import Builtins.TypeOps (builtinTypeOps)
 import Builtins.Primitives (builtinPrimitives)
 import Core (evalFile)
 import Types
@@ -26,7 +26,7 @@ loadPrelude = do
     builtins =
       [ builtinBootstrap
       , builtinControlFlow
-      , builtinPredicates
+      , builtinTypeOps
       , builtinPrimitives
       ]
 
