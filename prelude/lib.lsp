@@ -141,8 +141,6 @@
     (eval `(,$set! ,env ,symbols (,list ,@symbols))
           (eval env-exp env))))
 
-;;;;; Lets
-
 ; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
 ($define! $let
   ($macro (bindings . body)
@@ -186,9 +184,18 @@
   ($macro (bindings . body)
     `(,$let-redirect (,make-kernel-standard-environment) ,bindings ,@body)))
 
-;;;;; Conditionals
+($define! $bindings->environment
+  ($macro bindings
+    `(,$let-redirect (,make-environment) ,bindings (,get-current-environment))))
 
-($define! not? ($lambda (x) ($if x #f #t)))
+($define! get-module
+  ($lambda (filename . opt)
+    ($let ((env (make-kernel-standard-environment)))
+      ($if (pair? opt) ($set! env module-parameters (car opt)) #inert)
+      (eval `(,load ,filename) env)
+      env)))
+
+;;;;; Conditionals
 
 ($define! $and?
   ($vau conds env
