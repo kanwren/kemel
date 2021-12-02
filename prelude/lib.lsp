@@ -31,6 +31,8 @@
 ($define! cddr (wrap ($vau ((#ignore . (#ignore . xs     ))) #ignore xs)))
 ($define! caddr (wrap ($vau ((#ignore . (#ignore . (x       . #ignore)))) #ignore x )))
 ($define! cdddr (wrap ($vau ((#ignore . (#ignore . (#ignore . xs     )))) #ignore xs)))
+($define! cadddr (wrap ($vau ((#ignore . (#ignore . (#ignore . (x       . #ignore))))) #ignore x )))
+($define! cddddr (wrap ($vau ((#ignore . (#ignore . (#ignore . (#ignore . xs     ))))) #ignore xs)))
 
 ($define! list (wrap ($vau xs #ignore xs))) ; $lambda xs xs
 ($define! list*
@@ -92,6 +94,7 @@
 
 ($define! map
   ($lambda (f xs)
+    (the applicative f)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -240,6 +243,7 @@
 
 ($define! foldr
   ($lambda (f z xs)
+    (the applicative f)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -249,6 +253,7 @@
 
 ($define! foldl
   ($lambda (f z xs)
+    (the applicative f)
     ($define! go
       ($lambda (acc xs)
         ($if (null? xs)
@@ -267,6 +272,33 @@
     ($if ($or? (<= n 0) (null? xs))
       xs
       (drop (- n 1) (cdr xs)))))
+
+($define! assoc
+  ($lambda (needle alist)
+    ($define! go
+      ($lambda (alist)
+        ($cond
+          ((null? alist) nil)
+          ((equal? needle (car (car alist))) (car alist))
+          (#t (go (cdr alist))))))
+    (go alist)))
+
+($define! member?
+  ($lambda (needle haystack)
+    ($define! go
+      ($lambda (haystack)
+        ($cond
+          ((null? haystack) #f)
+          ((equal? needle (car haystack)) #t)
+          (#t (go (cdr haystack))))))
+    (go haystack)))
+
+($define! list-neighbors
+  ($lambda (xs)
+    ($if ($or? (null? xs) (null? (cdr xs)))
+      nil
+      (cons (list (car xs) (cadr xs))
+            (list-neighbors (cdr xs))))))
 
 ($define! windows
   ($lambda (n xs)
@@ -289,6 +321,7 @@
 
 ($define! filter
   ($lambda (pred xs)
+    (the applicative pred)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -304,3 +337,15 @@
       nil
       (cons (cons (car xs) (car ys))
             (zip (cdr xs) (cdr ys))))))
+
+($define! for-each
+  ($lambda (f xs)
+    (the applicative f)
+    ($define! go
+      ($lambda (xs)
+        ($if (null? xs)
+          #inert
+          ($sequence
+            (f (car xs))
+            (go (cdr xs))))))
+    (go xs)))
