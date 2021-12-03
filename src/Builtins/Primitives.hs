@@ -20,6 +20,8 @@ import Core (evalFile)
 import Errors
 import Types
 
+import Paths_kemel
+
 builtinPrimitives :: [(Symbol, Expr)]
 builtinPrimitives = fmap (second builtinApp)
   [ ("not?", primNot)
@@ -48,6 +50,7 @@ builtinPrimitives = fmap (second builtinApp)
   , ("gensym", primGensym)
   , ("print", printExpr)
   , ("load", load)
+  , ("get-data-file-path", getDataFilePath)
   ]
 
 primNot :: Builtin
@@ -174,3 +177,10 @@ load env [LString path] = do
   evalFile env contents
 load _ [e] = typeError "load" "string as path" e
 load _ args = numArgs "load" 1 args
+
+getDataFilePath :: Builtin
+getDataFilePath _ [LString name] = do
+  path <- liftIO $ getDataFileName $ Text.unpack name
+  pure $ LString $ Text.pack path
+getDataFilePath _ [e] = typeError "get-data-file-path" "string as path" e
+getDataFilePath _ args = numArgs "get-data-file-path" 1 args

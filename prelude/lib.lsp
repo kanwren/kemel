@@ -132,8 +132,8 @@
     ($the list symbols) ; can't be single bare variable
     (list $define! symbols
           (list $let ()
-                (list* $sequence body)
-                (list* symbols)))))
+                (cons $sequence body)
+                (cons list symbols)))))
 
 ; Import the given symbols from an environment into the current environment
 ($define! $import!
@@ -347,6 +347,17 @@
       nil
       (cons (cons (car xs) (car ys))
             (zip (cdr xs) (cdr ys))))))
+
+($define! zip-with
+  ($lambda (f xs ys)
+    ($the applicative f)
+    ($define! go
+      ($lambda (xs ys)
+        ($if ($or? (null? xs) (null? ys))
+          nil
+          (cons (f (car xs) (car ys))
+                (go (cdr xs) (cdr ys))))))
+    (go xs ys)))
 
 ($define! for-each
   ($lambda (f xs)
