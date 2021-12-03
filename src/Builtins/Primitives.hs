@@ -146,6 +146,7 @@ equal _ args =
     equal' (LKeyword x) (LKeyword y) = pure (x == y)
     equal' (LString x) (LString y) = pure (x == y)
     equal' (LSymbol x) (LSymbol y) = pure (x == y)
+    equal' (LEncapsulation e1) (LEncapsulation e2) = pure $ e1 == e2
     equal' (LEnv x) (LEnv y) = pure (x == y)
     equal' (LList x) (LList y) =
       if length x /= length y

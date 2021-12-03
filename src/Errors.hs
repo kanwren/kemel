@@ -77,6 +77,11 @@ getSymbol name = \case
   LSymbol s -> pure s
   x -> typeError name "symbol" x
 
+getEncapsulation :: Symbol -> Expr -> Eval Encapsulation
+getEncapsulation name = \case
+  LEncapsulation e -> pure e
+  x -> typeError name "encapsulation" x
+
 getEnvironment :: Symbol -> Expr -> Eval Environment
 getEnvironment name = \case
   LEnv e -> pure e

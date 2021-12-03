@@ -3,10 +3,13 @@
 
 module Builtins.Bootstrap (builtinBootstrap) where
 
+import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
+import Data.IORef (readIORef, newIORef)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (isJust)
+import Data.Unique (newUnique)
 import TextShow (showt)
 
 import Builtins.Utils (builtinOp, builtinApp, allM)
@@ -24,6 +27,7 @@ builtinBootstrap =
   , ("$if", builtinOp primIf)
   , ("$sequence", builtinOp progn)
   , ("make-environment", builtinApp makeEnvironment)
+  , ("make-encapsulation-type", builtinApp makeEncapsulation)
   , ("cons", builtinApp cons)
   , ("$binds?", builtinOp binds)
   ]
@@ -80,6 +84,28 @@ makeEnvironment _ args = do
   parents <- traverse (getEnvironment "make-environment") args
   env <- liftIO $ newEnvironment parents
   pure $ LEnv env
+
+makeEncapsulation :: Builtin
+makeEncapsulation _ [] = do
+  typeId <- liftIO newUnique
+  let
+    encapsulate = builtinApp $ \_ -> \case
+      [x] -> LEncapsulation . Encapsulation typeId <$> liftIO (newIORef x)
+      args -> numArgs "<encapsulate>" 1 args
+    test = builtinApp $ \_ args -> do
+      let
+        check (LEncapsulation (Encapsulation i _)) = i == typeId
+        check _ = False
+      pure $ LBool $ all check args
+    decapsulate = builtinApp $ \_ -> \case
+      [x] -> do
+        Encapsulation i val <- getEncapsulation "<decapsulate>" x
+        when (i /= typeId) $ do
+          evalError "<decapsulate>: encapsulation mismatch"
+        liftIO $ readIORef val
+      args -> numArgs "<decapsulate>" 1 args
+  pure $ LList [encapsulate, test, decapsulate]
+makeEncapsulation _ args = numArgs "make-encapsulation-type" 0 args
 
 cons :: Builtin
 cons _ [x, LList y] = pure $ LList (x:y)

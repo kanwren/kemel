@@ -12,6 +12,7 @@ module Types (
     Binder(..), ParamTree(..), Closure(..), Operative(..), Combiner(..), Builtin,
     Expr(..),
     renderType, typeToSymbol, symbolToTypePred,
+    Encapsulation(..),
     Environment(..), newEnvironment, newEnvironmentWith,
     genSym,
     Eval(..), Error(..)
@@ -28,6 +29,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.String (IsString(..))
 import Data.Text (Text)
+import Data.Unique (Unique)
 import System.IO.Unsafe (unsafePerformIO)
 import TextShow (TextShow(..))
 import TextShow qualified (fromText, unwordsB, FromTextShow(..))
@@ -83,18 +85,22 @@ instance TextShow Combiner where
     OperativeCombiner{} -> "<operative>"
     ApplicativeCombiner{} -> "<applicative>"
 
+data Encapsulation = Encapsulation !Unique !(IORef Expr)
+  deriving stock Eq
+
 data Expr
   = LInert
   | LIgnore
-  | LInt Integer
-  | LBool Bool
-  | LKeyword Keyword
-  | LString Text
-  | LSymbol Symbol
-  | LEnv Environment
-  | LList [Expr]
-  | LDottedList (NonEmpty Expr) Expr
-  | LCombiner Combiner
+  | LInt !Integer
+  | LBool !Bool
+  | LKeyword !Keyword
+  | LString !Text
+  | LSymbol !Symbol
+  | LEncapsulation !Encapsulation
+  | LEnv !Environment
+  | LList ![Expr]
+  | LDottedList !(NonEmpty Expr) !Expr
+  | LCombiner !Combiner
   deriving Show via (TextShow.FromTextShow Expr)
 
 renderType :: Expr -> Text
@@ -109,6 +115,7 @@ typeToSymbol = \case
   LKeyword _ -> "keyword"
   LString _ -> "string"
   LSymbol _ -> "symbol"
+  LEncapsulation _ -> "encapsulation"
   LEnv _ -> "environment"
   LList [] -> "null"
   LList (_:_) -> "pair"
@@ -145,6 +152,7 @@ instance TextShow Expr where
     LKeyword kw -> showb kw
     LString s -> showb s
     LSymbol s -> showb s
+    LEncapsulation _ -> "<encapsulation>"
     LEnv _ -> "<environment>"
     LList [] -> "()"
     LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
