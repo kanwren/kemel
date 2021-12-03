@@ -22,7 +22,7 @@ import System.Environment (getArgs)
 import Builtins (makeGround)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Eval(..), Expr(..), runProgram, Environment, Error(..))
+import Types (Eval(..), Expr(..), Environment, Error(..))
 
 handleError :: MonadIO m => (a -> m ()) -> Either Error a -> m ()
 handleError h = \case
@@ -34,7 +34,7 @@ handleExceptions = flip catch $ \(e :: SomeException) -> liftIO $ putStrLn $ "<t
 
 -- | Run a program in a child environment of the standard environment
 loadAndRun :: (Environment -> Eval a) -> IO (Either Error a)
-loadAndRun act = runProgram $ makeGround >>= act
+loadAndRun act = runEval $ makeGround >>= act
 
 repl :: IO ()
 repl = do

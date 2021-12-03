@@ -7,22 +7,30 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Types where
+module Types (
+    Symbol(..), Keyword(..),
+    Binder(..), ParamTree(..), Closure(..), Operative(..), Combiner(..), Builtin,
+    Expr(..),
+    renderType, typeToSymbol, symbolToTypePred,
+    Environment(..), newEnvironment, newEnvironmentWith,
+    genSym,
+    Eval(..), Error(..)
+  ) where
 
 import Control.Monad.Catch (MonadMask, MonadCatch, MonadThrow)
 import Control.Monad.Except ( ExceptT(ExceptT), MonadError )
 import Control.Monad.IO.Class
-import Control.Monad.State (MonadState, StateT(..), state)
 import Data.CaseInsensitive (CI, foldedCase, mk)
-import Data.Default (Default(..))
+import Data.HashTable.IO qualified as HIO
 import Data.Hashable (Hashable)
+import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.String (IsString(..))
 import Data.Text (Text)
+import System.IO.Unsafe (unsafePerformIO)
 import TextShow (TextShow(..))
 import TextShow qualified (fromText, unwordsB, FromTextShow(..))
-import qualified Data.HashTable.IO as HIO
 
 -- | The data type of all variable names
 newtype Symbol = Symbol (CI Text)
@@ -40,9 +48,14 @@ instance TextShow Keyword where
 -- | Specifies whether to bind a variable when calling an operator, and if so,
 -- what name it should get. For example, `($lambda (#ignore) ...)` will take one
 -- parameter, but will not bind it to any names.
-data Binder = IgnoreBinder | NamedBinder Symbol
+data Binder
+  = IgnoreBinder
+  | NamedBinder Symbol
 
-data ParamTree = BoundParam Binder | ParamList [ParamTree] | ParamDottedList (NonEmpty ParamTree) Binder
+data ParamTree
+  = BoundParam Binder
+  | ParamList [ParamTree]
+  | ParamDottedList (NonEmpty ParamTree) Binder
 
 -- | The definition of a user-defined vau operative. Holds the parameter
 -- specification, vau body, and the static environment closed over when the vau
@@ -138,8 +151,6 @@ instance TextShow Expr where
     LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"
     LCombiner c -> showb c
 
--- Evaluation context (scopes)
-
 newtype Error = EvalError Text
 
 -- | A handle to a mapping of variable names to values, along with any parent
@@ -164,30 +175,24 @@ newEnvironmentWith bindings parents = do
   m <- HIO.fromList bindings
   pure $ Environment m parents
 
--- Symbol generation
-
--- | The state which is used to produce new symbols for `gensym`.
-newtype SymbolGenerator = SymbolGenerator { getSymGen :: Int }
-
-instance Default SymbolGenerator where
-  def = SymbolGenerator 0
+symbolSource :: IORef Integer
+symbolSource = unsafePerformIO (newIORef 0)
+{-# NOINLINE symbolSource #-}
 
 -- | Generate a new symbol, modifying the symbol generator in the computation's
 -- state.
-genSym :: MonadState SymbolGenerator m => m Symbol
-genSym = state $ \(SymbolGenerator n) -> (Symbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
-
--- Eval
+genSym :: IO Symbol
+genSym = do
+  n <- atomicModifyIORef' symbolSource $ \cur ->
+    let new = cur + 1
+    in (cur, new)
+  pure $ Symbol $ mk $ "#:g" <> showt n
 
 -- | The monad for evaluating expressions.
-newtype Eval a = Eval { runEval :: SymbolGenerator -> IO (Either Error a, SymbolGenerator) }
+newtype Eval a = Eval { runEval :: IO (Either Error a) }
   deriving
     ( Functor, Applicative, Monad
     , MonadError Error
-    , MonadState SymbolGenerator
     , MonadIO, MonadThrow, MonadCatch, MonadMask
     )
-    via ExceptT Error (StateT SymbolGenerator IO)
-
-runProgram :: Eval a -> IO (Either Error a)
-runProgram program = fst <$> runEval program def
+    via ExceptT Error IO

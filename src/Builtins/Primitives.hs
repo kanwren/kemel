@@ -160,7 +160,7 @@ equal _ args =
     equal' x y = evalError $ "equal?: incompatible types " <> renderType x <> " and " <> renderType y
 
 primGensym :: Builtin
-primGensym _ [] = LSymbol <$> genSym
+primGensym _ [] = LSymbol <$> liftIO genSym
 primGensym _ args = numArgs "gensym" 0 args
 
 printExpr :: Builtin
