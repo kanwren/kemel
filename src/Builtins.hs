@@ -23,7 +23,7 @@ makeGround = do
       ]
   env <- liftIO $ newEnvironmentWith (concat builtins) []
   contents <- liftIO $ do
-    preludeFile <- getDataFileName "prelude/lib.lsp"
+    preludeFile <- getDataFileName "prelude.lsp"
     Text.IO.readFile preludeFile
   _ <- evalFile env contents
   liftIO $ newEnvironment [env]

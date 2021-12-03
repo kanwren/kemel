@@ -19,7 +19,9 @@ maintainer:         nprindle18@gmail.com
 category:           Language
 extra-source-files: CHANGELOG.md
 
-data-files: prelude/**/*.lsp
+data-files:
+  prelude.lsp
+  prelude/**/*.lsp
 
 executable kemel
     main-is:          Main.hs
