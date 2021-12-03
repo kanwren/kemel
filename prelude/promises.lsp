@@ -6,7 +6,7 @@
   ;; context, a pair of an object and nil if evaluated or an expression and an
   ;; environment if not.
   ($define! (promise-caps promise? promise-decaps) (make-encapsulation-type))
-  ($declare-record-type! promise-ctx (obj env))
+  ($declare-record! promise-ctx (obj env))
 
   ($define! memoize
     ($lambda (value)

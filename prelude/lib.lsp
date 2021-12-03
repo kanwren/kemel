@@ -371,7 +371,6 @@
             (go (cdr xs))))))
     (go xs)))
 
-(load (get-data-file-path "prelude/record-types.lsp"))
 (load (get-data-file-path "prelude/records.lsp"))
 (load (get-data-file-path "prelude/boxes.lsp"))
 (load (get-data-file-path "prelude/cells.lsp"))
