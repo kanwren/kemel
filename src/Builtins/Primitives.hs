@@ -52,7 +52,9 @@ builtinPrimitives = fmap (second builtinApp)
   , ("string->symbol", stringToSymbol)
   , ("symbol->string", symbolToString)
   , ("gensym", primGensym)
-  , ("print", printExpr)
+  , ("print", primPrint)
+  , ("write", primWrite)
+  , ("display", primDisplay)
   , ("load", load)
   , ("get-data-file-path", getDataFilePath)
   ]
@@ -184,9 +186,19 @@ primGensym :: Builtin
 primGensym _ [] = LSymbol <$> liftIO genSym
 primGensym _ args = numArgs "gensym" 0 args
 
-printExpr :: Builtin
-printExpr _ [e] = liftIO (print e) $> LInert
-printExpr _ args = numArgs "print" 1 args
+primPrint :: Builtin
+primPrint _ [LString s] = liftIO (Text.IO.putStrLn s) $> LInert
+primPrint _ [e] = liftIO (print e) $> LInert
+primPrint _ args = numArgs "print" 1 args
+
+primWrite :: Builtin
+primWrite _ [LString s] = liftIO (Text.IO.putStr s) $> LInert
+primWrite _ [e] = liftIO (Text.IO.putStr (showt e)) $> LInert
+primWrite _ args = numArgs "write" 1 args
+
+primDisplay :: Builtin
+primDisplay _ [e] = liftIO (print e) $> LInert
+primDisplay _ args = numArgs "display" 1 args
 
 load :: Builtin
 load env [LString path] = do
