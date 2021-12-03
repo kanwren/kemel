@@ -8,6 +8,7 @@ module Builtins.Primitives (builtinPrimitives) where
 import Control.Monad (zipWithM)
 import Control.Monad.IO.Class
 import Data.Bifunctor (second)
+import Data.CaseInsensitive (mk, foldedCase)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
 import Data.List.NonEmpty qualified as NonEmpty
@@ -47,6 +48,9 @@ builtinPrimitives = fmap (second builtinApp)
   , ("string<", stringLt)
   , ("string>=", stringGe)
   , ("string<=", stringLe)
+  , ("string-append", stringAppend)
+  , ("string->symbol", stringToSymbol)
+  , ("symbol->string", symbolToString)
   , ("gensym", primGensym)
   , ("print", printExpr)
   , ("load", load)
@@ -134,6 +138,19 @@ stringGt _ = stringComparison "string>" (>)
 stringLt _ = stringComparison "string<" (<)
 stringGe _ = stringComparison "string>=" (<=)
 stringLe _ = stringComparison "string<=" (<=)
+
+stringAppend :: Builtin
+stringAppend _ args = LString . Text.concat <$> traverse (getString "string-append") args
+
+stringToSymbol :: Builtin
+stringToSymbol _ [x] = LSymbol . Symbol . mk <$> getString "string->symbol" x
+stringToSymbol _ args = numArgs "string->symbol" 1 args
+
+symbolToString :: Builtin
+symbolToString _ [x] = do
+  Symbol s <- getSymbol "symbol->string" x
+  pure $ LString $ foldedCase s
+symbolToString _ args = numArgs "symbol->string" 1 args
 
 equal :: Builtin
 equal _ args =

@@ -360,7 +360,7 @@
     (go xs ys)))
 
 ($define! for-each
-  ($lambda (f xs)
+  ($lambda (xs f)
     ($the applicative f)
     ($define! go
       ($lambda (xs)
@@ -370,3 +370,5 @@
             (f (car xs))
             (go (cdr xs))))))
     (go xs)))
+
+(load (get-data-file-path "prelude/records.lsp"))
