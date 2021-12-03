@@ -47,13 +47,6 @@
                 (cons x (go xs))))))
         (go args)))))
 
-($define! append
-  (wrap
-    ($vau (xs ys) #ignore
-      ($if (null? xs)
-        ys
-        (cons (car xs) (append (cdr xs) ys))))))
-
 ; Redefine $vau to be able to take an arbitrary body, not just a single
 ; expression
 ($define! $vau
@@ -61,30 +54,34 @@
      ($vau ($vau) #ignore
        ($vau (formals env-name . body) env
          (eval
-           `(,$vau ,formals ,env-name
-                   ,($if (null? body)
-                      nil
-                      ($if (> (length body) 1)
-                        (cons $sequence body)
-                        (car body))))
+           (list $vau formals env-name
+                 ($if (null? body)
+                   nil
+                   ($if (> (length body) 1)
+                     (cons $sequence body)
+                     (car body))))
            env))))
    $vau))
 
 ($define! $lambda
   ($vau (formals . body) env
-    (wrap (eval `(,$vau ,formals #ignore ,@body) env))))
+    (wrap (eval (list* $vau formals #ignore body) env))))
 
 ($define! $macro
   ($vau (formals . body) env
     ; Don't have let yet, have to use the `(($lambda params ...) vals)` trick
-    ((wrap ($vau (env-var) #ignore
-        (eval `(,$vau ,formals ,env-var (,eval (,$sequence ,@body) ,env-var)) env)))
+    ((wrap
+       ($vau (env-var) #ignore
+         (eval
+           (list $vau formals env-var
+                 (list eval (cons $sequence body) env-var))
+           env)))
      (gensym))))
 
 ($define! apply
   ($lambda (op args . optional-env)
     (eval
-      `(,(unwrap op) ,@args)
+      (cons (unwrap op) args)
       ($if (null? optional-env)
         (make-environment)
         ($sequence
@@ -119,7 +116,7 @@
 ($define! $set!
   ($vau (target-env binders vals) env
     (eval
-      `(,$define! ,binders (,(unwrap eval) ,vals ,env))
+      (list $define! binders (list (unwrap eval) vals env))
       (eval target-env env))))
 
 ; Look up a variable in the given environment
@@ -133,69 +130,75 @@
 ($define! $provide!
   ($macro (symbols . body)
     (the list symbols) ; can't be single bare variable
-    `(,$define! ,symbols
-                (,$let ()
-                       (,$sequence ,@body)
-                       (,list ,@symbols)))))
+    (list $define! symbols
+          (list $let ()
+                (list* $sequence body)
+                (list* symbols)))))
 
 ; Import the given symbols from an environment into the current environment
 ($define! $import!
   ($vau (env-exp . symbols) env
-    (eval `(,$set! ,env ,symbols (,list ,@symbols))
+    (eval (list $set! env symbols (cons list symbols))
           (eval env-exp env))))
 
 ; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
 ($define! $let
   ($macro (bindings . body)
     (the list bindings)
-    `((,$lambda ,(map car bindings) ,@body) ,@(map cadr bindings))))
+    (cons (list* $lambda (map car bindings) body) (map cadr bindings))))
 
 ; Rewrite `($let* (params-with-values) ...)` into `($let ((param val)) ($let ((param val)) ...))`
 ($define! $let*
   ($macro (bindings . body)
     (the list bindings)
     ($if (null? bindings)
-      `(,$let ,bindings ,@body)
-      `(,$let (,(car bindings)) (,$let* ,(cdr bindings) ,@body)))))
+      (list* $let bindings body)
+      (list $let
+            (list (car bindings))
+            (list* $let* (cdr bindings) body)))))
 
 ; Rewrite `($letrec (params-with-values) ...)` into `($let () ($define! params values) ...)`
 ($define! $letrec
   ($macro (bindings . body)
     (the list bindings)
-    `(,$let ()
-            (,$define!
-              ,(map car bindings)
-              (,list ,@(map cadr bindings)))
-            ,@body)))
+    (list* $let ()
+           (list $define!
+                 (map car bindings)
+                 (cons list (map cadr bindings)))
+           body)))
 
 ; Rewrite `($letrec* (params-with-values) ...)` into `($letrec ((param val)) ($letrec ((param val)) ...))`
 ($define! $letrec*
   ($macro (bindings . body)
     (the list bindings)
     ($if (null? bindings)
-      `(,$letrec ,bindings ,@body)
-      `(,$letrec (,(car bindings)) (,$letrec* ,(cdr bindings) ,@body)))))
+      (list* $letrec bindings body)
+      (list $letrec
+            (list (car bindings))
+            (list* $letrec* (cdr bindings) body)))))
 
 ($define! $let-redirect
   ($vau (env-exp bindings . body) env
-    (eval `(,(eval `(,$lambda ,(map car bindings) ,@body)
-                   (eval env-exp env))
-             ,@(map cadr bindings))
-          env)))
+    (eval
+      (cons (eval (list* $lambda (map car bindings) body)
+                  (eval env-exp env))
+            (map cadr bindings))
+      env)))
 
 ($define! $let-safe
   ($macro (bindings . body)
-    `(,$let-redirect (,make-kernel-standard-environment) ,bindings ,@body)))
+    (list* $let-redirect (list make-kernel-standard-environment) bindings body)))
 
 ($define! $bindings->environment
   ($macro bindings
-    `(,$let-redirect (,make-environment) ,bindings (,get-current-environment))))
+    (list $let-redirect (list make-environment) bindings
+          (list get-current-environment))))
 
 ($define! get-module
   ($lambda (filename . opt)
     ($let ((env (make-kernel-standard-environment)))
       ($if (pair? opt) ($set! env module-parameters (car opt)) #inert)
-      (eval `(,load ,filename) env)
+      (eval (list load filename) env)
       env)))
 
 ;;;;; Conditionals
@@ -219,14 +222,14 @@
 ($define! $when
   ($vau (cond . body) env
     ($if (eval cond env)
-      (eval `(,$sequence ,@body) env)
+      (eval (cons $sequence body) env)
       #inert)))
 
 ($define! $unless
   ($vau (cond . body) env
     ($if (eval cond env)
       #inert
-      (eval `(,$sequence ,@body) env))))
+      (eval (cons $sequence body) env))))
 
 ($define! $cond
   ($vau conds env
@@ -234,12 +237,19 @@
       #inert
       ($let ((((c . body) . rest) conds))
         ($if (eval c env)
-          (eval `(,$sequence ,@body) env)
+          (eval (cons $sequence body) env)
           (apply (wrap $cond) rest env))))))
 
 ($define! otherwise #t)
 
 ;;;;; Lists
+
+($define! append
+  (wrap
+    ($vau (xs ys) #ignore
+      ($if (null? xs)
+        ys
+        (cons (car xs) (append (cdr xs) ys))))))
 
 ($define! foldr
   ($lambda (f z xs)

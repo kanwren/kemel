@@ -50,9 +50,7 @@ executable kemel
                       , exceptions
                       , case-insensitive
                       , text-show
-                      , vector
                       , data-default
-                      , split
                       , hashtables
                       , hashable
     hs-source-dirs:   src

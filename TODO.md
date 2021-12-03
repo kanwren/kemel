@@ -1,5 +1,3 @@
-- Make splicing more efficient - `append` shouldn't be called for cases where `cons` or `list*` would suffice
-  - Alternatively, remove splicing, since neither backquoting nor quoting are in the standard
 - Re-implement control flow (like `tagbody`, `block`, etc.) in terms of delimited continuations
 - Re-implement exceptions in terms of delimited continuations
 - Tail call optimization if possible
