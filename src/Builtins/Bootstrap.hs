@@ -6,7 +6,6 @@ module Builtins.Bootstrap (builtinBootstrap) where
 import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
-import Data.IORef (readIORef, newIORef)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (isJust)
 import Data.Unique (newUnique)
@@ -91,7 +90,7 @@ makeEncapsulation _ [] = do
   typeId <- liftIO newUnique
   let
     encapsulate = builtinApp $ \_ -> \case
-      [x] -> LEncapsulation . Encapsulation typeId <$> liftIO (newIORef x)
+      [x] -> pure $ LEncapsulation $ Encapsulation typeId x
       args -> numArgs "<encapsulate>" 1 args
     test = builtinApp $ \_ args -> do
       let
@@ -101,9 +100,8 @@ makeEncapsulation _ [] = do
     decapsulate = builtinApp $ \_ -> \case
       [x] -> do
         Encapsulation i val <- getEncapsulation "<decapsulate>" x
-        when (i /= typeId) $ do
-          evalError "<decapsulate>: encapsulation mismatch"
-        liftIO $ readIORef val
+        when (i /= typeId) $ evalError "<decapsulate>: encapsulation mismatch"
+        pure val
       args -> numArgs "<decapsulate>" 1 args
   pure $ LList [encapsulate, test, decapsulate]
 makeEncapsulation _ args = numArgs "make-encapsulation-type" 0 args

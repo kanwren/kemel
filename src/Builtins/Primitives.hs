@@ -5,13 +5,11 @@
 
 module Builtins.Primitives (builtinPrimitives) where
 
-import Control.Monad (zipWithM)
 import Control.Monad.IO.Class
 import Data.Bifunctor (second)
 import Data.CaseInsensitive (mk, foldedCase)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
-import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
 import TextShow (TextShow(..))
@@ -155,32 +153,8 @@ symbolToString _ [x] = do
 symbolToString _ args = numArgs "symbol->string" 1 args
 
 equal :: Builtin
-equal _ args =
-  case args of
-    [x, y] -> LBool <$> equal' x y
-    _ -> numArgs "equal?" 2 args
-  where
-    equal' :: Expr -> Expr -> Eval Bool
-    equal' LInert LInert = pure True
-    equal' LIgnore LIgnore = pure True
-    equal' (LInt x) (LInt y) = pure (x == y)
-    equal' (LBool x) (LBool y) = pure (x == y)
-    equal' (LKeyword x) (LKeyword y) = pure (x == y)
-    equal' (LString x) (LString y) = pure (x == y)
-    equal' (LSymbol x) (LSymbol y) = pure (x == y)
-    equal' (LEncapsulation e1) (LEncapsulation e2) = pure $ e1 == e2
-    equal' (LEnv x) (LEnv y) = pure (x == y)
-    equal' (LList x) (LList y) =
-      if length x /= length y
-      then pure False
-      else and <$> zipWithM equal' x y
-    equal' (LDottedList x x') (LDottedList y y') =
-      if length x /= length y
-      then pure False
-      else (&&) <$> (and <$> zipWithM equal' (NonEmpty.toList x) (NonEmpty.toList y)) <*> equal' x' y'
-    equal' (LCombiner (ApplicativeCombiner c1)) (LCombiner (ApplicativeCombiner c2)) = equal' (LCombiner c1) (LCombiner c2)
-    equal' (LCombiner (OperativeCombiner _)) (LCombiner (OperativeCombiner _)) = pure False -- TODO
-    equal' x y = evalError $ "equal?: incompatible types " <> renderType x <> " and " <> renderType y
+equal _ [x, y] = pure $ LBool $ x == y
+equal _ args = numArgs "equal?" 2 args
 
 primGensym :: Builtin
 primGensym _ [] = LSymbol <$> liftIO genSym

@@ -85,7 +85,7 @@ instance TextShow Combiner where
     OperativeCombiner{} -> "<operative>"
     ApplicativeCombiner{} -> "<applicative>"
 
-data Encapsulation = Encapsulation !Unique !(IORef Expr)
+data Encapsulation = Encapsulation !Unique !Expr
   deriving stock Eq
 
 data Expr
@@ -102,6 +102,22 @@ data Expr
   | LDottedList !(NonEmpty Expr) !Expr
   | LCombiner !Combiner
   deriving Show via (TextShow.FromTextShow Expr)
+
+instance Eq Expr where
+  LInert == LInert = True
+  LIgnore == LIgnore = True
+  LInt x == LInt y = x == y
+  LBool x == LBool y = x == y
+  LKeyword x == LKeyword y = x == y
+  LString x == LString y = x == y
+  LSymbol x == LSymbol y = x == y
+  LEncapsulation e1 == LEncapsulation e2 = e1 == e2
+  LEnv x == LEnv y = x == y
+  LList x == LList y = x == y
+  LDottedList x x' == LDottedList y y' = x == y && x' == y'
+  LCombiner (ApplicativeCombiner c1) == LCombiner (ApplicativeCombiner c2) = (==) (LCombiner c1) (LCombiner c2)
+  LCombiner (OperativeCombiner _) == LCombiner (OperativeCombiner _) = False -- TODO
+  _ == _ = False
 
 renderType :: Expr -> Text
 renderType = showt . typeToSymbol
