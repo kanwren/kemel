@@ -63,8 +63,8 @@ builtinTypeOps = helpers <> typePreds
       ]
     mkPred name =
       let
-        typeName = SimpleSymbol $ mk name
-        predName = SimpleSymbol $ mk $ name <> "?"
+        typeName = Symbol (mk name)
+        predName = Symbol (mk (name <> "?"))
         app _ = fmap (LBool . and) . traverse (\v -> typep predName v (LSymbol typeName))
       in (predName, builtinApp app)
 

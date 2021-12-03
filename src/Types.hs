@@ -21,23 +21,15 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.String (IsString(..))
 import Data.Text (Text)
-import Data.Text qualified as Text
 import TextShow (TextShow(..))
 import TextShow qualified (fromText, unwordsB, FromTextShow(..))
 
 -- | The data type of all variable names
-data Symbol
-  = SimpleSymbol (CI Text)
-  | ArbSymbol Text
-  deriving stock (Eq, Ord)
-
-instance IsString Symbol where
-  fromString = SimpleSymbol . fromString
+newtype Symbol = Symbol (CI Text)
+  deriving newtype (Eq, Ord, IsString)
 
 instance TextShow Symbol where
-  showb = \case
-    SimpleSymbol s -> TextShow.fromText (foldedCase s)
-    ArbSymbol s -> "|" <> TextShow.fromText (Text.replace "|" "\\|" s) <> "|"
+  showb (Symbol s) = TextShow.fromText (foldedCase s)
 
 newtype Keyword = Keyword { getKeyword :: Symbol }
   deriving stock (Eq, Ord)
@@ -96,7 +88,7 @@ renderType :: Expr -> Text
 renderType = showt . typeToSymbol
 
 typeToSymbol :: Expr -> Symbol
-typeToSymbol = SimpleSymbol . \case
+typeToSymbol = \case
   LInert -> "inert"
   LIgnore -> "ignore"
   LInt _ -> "integer"
@@ -141,7 +133,6 @@ instance TextShow Expr where
     LString s -> showb s
     LSymbol s -> showb s
     LEnv _ -> "<environment>"
-    LList [LSymbol "$quote", x] -> "'" <> showb x
     LList [] -> "()"
     LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
     LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"
@@ -183,7 +174,7 @@ instance Default SymbolGenerator where
 -- | Generate a new symbol, modifying the symbol generator in the computation's
 -- state.
 genSym :: MonadState SymbolGenerator m => m Symbol
-genSym = state $ \(SymbolGenerator n) -> (SimpleSymbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
+genSym = state $ \(SymbolGenerator n) -> (Symbol (mk ("#:g" <> showt n)), SymbolGenerator (n + 1))
 
 -- Eval
 

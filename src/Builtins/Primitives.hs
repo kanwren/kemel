@@ -13,7 +13,6 @@ import Data.List (foldl', foldl1')
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
-import System.Exit qualified as Exit
 import TextShow (TextShow(..))
 
 import Builtins.Utils (builtinApp)

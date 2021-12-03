@@ -6,11 +6,11 @@
 
 module Parser (pExprs, parseFile) where
 
-import Control.Applicative ((<|>), many, some)
+import Control.Applicative ((<|>), many)
 import Control.Applicative.Combinators (sepEndBy, optional)
-import Control.Monad (void, guard)
+import Control.Monad (void)
 import Data.Attoparsec.Text as AT hiding (space)
-import Data.CaseInsensitive (CI, foldedCase, mk)
+import Data.CaseInsensitive (mk)
 import Data.Char (isSpace)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl')
@@ -35,58 +35,19 @@ label :: String -> Parser a -> Parser a
 label l f = f <?> l
 
 pId :: Parser Symbol
-pId = label "keyword" $ do
-    res <- fmap collect identifier
-    guard $ res /= SimpleSymbol "."
-    pure res
+pId = label "keyword" $ Symbol <$> choice
+  [ (<>) <$> (mk . Text.singleton <$> idHeadChar) <*> (mk . Text.pack <$> many idChar)
+  , mk <$> choice [string "+", string "-"]
+  ]
   where
-    idHeadChar, idChar :: Parser Char
-    idHeadChar = label "identifier first char" $ do
-      letter <|> satisfy (\c -> Text.any (c ==) "-+*/!$%&:<=>?@^_~.") <|> digit
-    idChar = label "identifier char" $ do
-      idHeadChar <|> char '#'
-
-    arbString :: Parser Text
-    arbString = char '|' *> (Text.pack <$> ((string "\\|" $> '|') <|> anyChar) `manyTill` char '|')
-
-    identifier :: Parser (NonEmpty (Either Text (CI Text)))
-    identifier = (:|)
-      <$> do choice [Left <$> arbString, Right . mk . Text.singleton <$> idHeadChar]
-      <*> do many $ choice [Left <$> arbString, Right . mk . Text.pack <$> some idChar]
-
-    toArbSymbol :: NonEmpty (Either Text (CI Text)) -> Symbol
-    toArbSymbol = ArbSymbol . Text.concat . fmap (either id foldedCase) . NonEmpty.toList
-
-    collect :: NonEmpty (Either Text (CI Text)) -> Symbol
-    collect chunks =
-      case NonEmpty.filter (/= Left "") chunks of
-        -- implies that entire identifier was ||
-        []         -> ArbSymbol ""
-        Right x:xs -> go x xs
-        x:xs       -> toArbSymbol $ x:|xs
-      where
-        go :: CI Text -> [Either Text (CI Text)] -> Symbol
-        go acc []           = SimpleSymbol acc
-        go acc (Right x:xs) = go (acc <> x) xs
-        go acc (Left x:xs)  = toArbSymbol $ Right acc:|(Left x:xs)
+    idHeadChar = letter <|> satisfy (\c -> Text.any (c ==) "+-*/!$%&:<=>?@^_~")
+    idChar = idHeadChar <|> digit <|> satisfy (\c -> Text.any (c ==) "+-#.")
 
 between :: Parser a -> Parser b -> Parser c -> Parser c
 between s e m = s *> m <* e
 
-pList :: Parser Expr
-pList = label "list" $ between (symbol "(") (char ')') $ do
-  leading <- pExpr `sepEndBy` space
-  case NonEmpty.nonEmpty leading of
-    Nothing -> pure $ LList leading
-    Just neLeading -> optional (symbol "." *> lexeme pExpr) >>= \case
-      Nothing -> pure $ LList leading
-      Just (LList xs) -> pure $ LList (leading ++ xs)
-      Just (LDottedList xs x) -> pure $ LDottedList (prepend leading xs) x
-      Just end -> pure $ LDottedList neLeading end
-  where
-    prepend :: [a] -> NonEmpty a -> NonEmpty a
-    prepend [] (y:|ys) = y:|ys
-    prepend (x:xs) (y:|ys) = x :| (xs ++ y : ys)
+quote :: Expr -> Expr
+quote v = LList [LSymbol "$quote", v]
 
 pAtom :: Parser Expr
 pAtom = choice
@@ -100,19 +61,22 @@ pAtom = choice
   ]
 
 pExpr :: Parser Expr
-pExpr = choice
-  -- 'x is the same as ($quote x), where "$quote" is an operator in the standard
-  -- library that returns a value without evaluating it.
-  [ label "quoted expression" $ symbol "'" *> (quote <$> pExpr)
-  , pList
-  , pAtom
-  , symbol "`" *> pBackquoteExpr
-  ]
+pExpr = choice [pList, pAtom, symbol "`" *> pBackquoteExpr]
+  where
+    pList = label "list" $ between (symbol "(") (char ')') $ do
+      leading <- pExpr `sepEndBy` space
+      case NonEmpty.nonEmpty leading of
+        Nothing -> pure $ LList leading
+        Just neLeading -> optional (symbol "." *> lexeme pExpr) >>= \case
+          Nothing -> pure $ LList leading
+          Just (LList xs) -> pure $ LList (leading ++ xs)
+          Just (LDottedList xs x) -> pure $ LDottedList (prependList leading xs) x
+          Just end -> pure $ LDottedList neLeading end
+    prependList :: [a] -> NonEmpty a -> NonEmpty a
+    prependList [] (y:|ys) = y:|ys
+    prependList (x:xs) (y:|ys) = x :| (xs ++ y : ys)
 
 data Splice = ExprSplice | ListSplice
-
-quote :: Expr -> Expr
-quote v = LList [LSymbol "$quote", v]
 
 -- An xpression in a backquote
 pBackquoteExpr :: Parser Expr
@@ -126,12 +90,7 @@ pBackquoteExpr = do
     pSplice = (symbol ",@" $> ListSplice) <|> (symbol "," $> ExprSplice)
 
     pPendingSpliceExpr :: Parser Expr
-    pPendingSpliceExpr = choice
-      [ pQuoteBackquoteed
-      , pListBackquoteed
-      , quote <$> pAtom
-      , quote <$> (symbol "`" *> pBackquoteExpr)
-      ]
+    pPendingSpliceExpr = choice [pQuoteBackquoteed, pListBackquoteed, quote <$> pAtom, quote <$> (symbol "`" *> pBackquoteExpr)]
       where
         pQuoteBackquoteed = label "quoted backquote-expression" $ symbol "'" *> do
           optional pSplice >>= \case
