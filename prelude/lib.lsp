@@ -1,25 +1,25 @@
 ($define! nil ())
 
-; TODO: decide whether or not to use this for sequence, since providing it as a
-; primitive is probably significantly more efficient
+;;; TODO: decide whether or not to use this for sequence, since providing it as
+;;; a primitive is probably significantly more efficient
 ($define! $_sequence
   ((wrap
      ($vau (do-both) #ignore
        (do-both
-         ; recursive helper - sequence nonempty list of actions
+         ;; recursive helper - sequence nonempty list of actions
          ($define! go
            ($vau (first . rest) env
              ($if (null? rest)
                (eval first env)
                (do-both (eval first env)
                         (eval (cons go rest) env)))))
-         ; return a vau that checks the base case and recurses
+         ;; return a vau that checks the base case and recurses
          ($vau body env
            ($if (null? body)
              #inert
              (eval (cons go body) env))))))
-   ; `((wrap ($vau #ignore #ignore *b*)) *a*)` can is used to sequence
-   ; two actions `*a*` and `*b*`
+   ;; `((wrap ($vau #ignore #ignore *b*)) *a*)` can is used to sequence
+   ;; two actions `*a*` and `*b*`
    ($vau (a b) env
      ((wrap ($vau #ignore #ignore (eval b env))) (eval a env)))))
 
@@ -47,8 +47,8 @@
                 (cons x (go xs))))))
         (go args)))))
 
-; Redefine $vau to be able to take an arbitrary body, not just a single
-; expression
+;;; Redefine $vau to be able to take an arbitrary body, not just a single
+;;; expression
 ($define! $vau
   ((wrap
      ($vau ($vau) #ignore
@@ -69,7 +69,7 @@
 
 ($define! $macro
   ($vau (formals . body) env
-    ; Don't have let yet, have to use the `(($lambda params ...) vals)` trick
+    ;; Don't have $let yet, have to use the `(($lambda params ...) vals)` trick
     ((wrap
        ($vau (env-var) #ignore
          (eval
@@ -85,7 +85,7 @@
       ($if (null? optional-env)
         (make-environment)
         ($sequence
-          ; Assert there's only one optional parameter
+          ;; Assert there's only one optional parameter
           ($the null (cdr optional-env))
           (car optional-env))))))
 
@@ -99,7 +99,7 @@
           (cons (f (car xs)) (go (cdr xs))))))
     (go xs)))
 
-;;;;; Environments
+;;; === Environments ===
 
 ($define! get-current-environment
   (wrap ($vau () e e)))
@@ -107,26 +107,26 @@
 ($define! make-kernel-standard-environment
   ($lambda () (get-current-environment)))
 
-; Evaluate an expression in the provided environment
+;;; Evaluate an expression in the provided environment
 ($define! $remote-eval
   ($vau (exp target-env) env
     (eval exp (eval target-env env))))
 
-; Set variables in the given environment
+;;; Set variables in the given environment
 ($define! $set!
   ($vau (target-env binders vals) env
     (eval
       (list $define! binders (list (unwrap eval) vals env))
       (eval target-env env))))
 
-; Look up a variable in the given environment
-; This is just $remote-eval, but with the arguments flipped
+;;; Look up a variable in the given environment
+;;; This is just $remote-eval, but with the arguments flipped
 ($define! $get
   ($vau (target-env exp) env
     (eval exp (eval target-env env))))
 
-; Run a sequence of commands, and bind the provided symbols from the resulting
-; environment into the current environment
+;;; Run a sequence of commands, and bind the provided symbols from the resulting
+;;; environment into the current environment
 ($define! $provide!
   ($macro (symbols . body)
     ($the list symbols) ; can't be single bare variable
@@ -135,19 +135,19 @@
                 (cons $sequence body)
                 (cons list symbols)))))
 
-; Import the given symbols from an environment into the current environment
+;;; Import the given symbols from an environment into the current environment
 ($define! $import!
   ($vau (env-exp . symbols) env
     (eval (list $set! env symbols (cons list symbols))
           (eval env-exp env))))
 
-; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
+;;; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
 ($define! $let
   ($macro (bindings . body)
     ($the list bindings)
     (cons (list* $lambda (map car bindings) body) (map cadr bindings))))
 
-; Rewrite `($let* (params-with-values) ...)` into `($let ((param val)) ($let ((param val)) ...))`
+;;; Rewrite `($let* (params-with-values) ...)` into `($let ((param val)) ($let ((param val)) ...))`
 ($define! $let*
   ($macro (bindings . body)
     ($the list bindings)
@@ -157,7 +157,7 @@
             (list (car bindings))
             (list* $let* (cdr bindings) body)))))
 
-; Rewrite `($letrec (params-with-values) ...)` into `($let () ($define! params values) ...)`
+;;; Rewrite `($letrec (params-with-values) ...)` into `($let () ($define! params values) ...)`
 ($define! $letrec
   ($macro (bindings . body)
     ($the list bindings)
@@ -167,7 +167,7 @@
                  (cons list (map cadr bindings)))
            body)))
 
-; Rewrite `($letrec* (params-with-values) ...)` into `($letrec ((param val)) ($letrec ((param val)) ...))`
+;;; Rewrite `($letrec* (params-with-values) ...)` into `($letrec ((param val)) ($letrec ((param val)) ...))`
 ($define! $letrec*
   ($macro (bindings . body)
     ($the list bindings)
@@ -201,7 +201,7 @@
       (eval (list load filename) env)
       env)))
 
-;;;;; Conditionals
+;;; === Conditionals ===
 
 ($define! $and?
   ($vau conds env
@@ -242,7 +242,7 @@
 
 ($define! otherwise #t)
 
-;;;;; Lists
+;;; === Lists ===
 
 ($define! append
   (wrap
@@ -322,7 +322,7 @@
 ($define! sum ($lambda (xs) (apply + xs)))
 ($define! product ($lambda (xs) (apply * xs)))
 
-; TODO: bounds check
+;;; TODO: bounds check
 ($define! index
   ($lambda (n xs)
     ($if (= n 0)
@@ -372,3 +372,4 @@
     (go xs)))
 
 (load (get-data-file-path "prelude/records.lsp"))
+(load (get-data-file-path "prelude/cells.lsp"))
