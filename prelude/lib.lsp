@@ -86,12 +86,12 @@
         (make-environment)
         ($sequence
           ; Assert there's only one optional parameter
-          (the null (cdr optional-env))
+          ($the null (cdr optional-env))
           (car optional-env))))))
 
 ($define! map
   ($lambda (f xs)
-    (the applicative f)
+    ($the applicative f)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -129,7 +129,7 @@
 ; environment into the current environment
 ($define! $provide!
   ($macro (symbols . body)
-    (the list symbols) ; can't be single bare variable
+    ($the list symbols) ; can't be single bare variable
     (list $define! symbols
           (list $let ()
                 (list* $sequence body)
@@ -144,13 +144,13 @@
 ; Rewrites `($let (params-with-values) ...)` into `(($lambda params ...) values)`
 ($define! $let
   ($macro (bindings . body)
-    (the list bindings)
+    ($the list bindings)
     (cons (list* $lambda (map car bindings) body) (map cadr bindings))))
 
 ; Rewrite `($let* (params-with-values) ...)` into `($let ((param val)) ($let ((param val)) ...))`
 ($define! $let*
   ($macro (bindings . body)
-    (the list bindings)
+    ($the list bindings)
     ($if (null? bindings)
       (list* $let bindings body)
       (list $let
@@ -160,7 +160,7 @@
 ; Rewrite `($letrec (params-with-values) ...)` into `($let () ($define! params values) ...)`
 ($define! $letrec
   ($macro (bindings . body)
-    (the list bindings)
+    ($the list bindings)
     (list* $let ()
            (list $define!
                  (map car bindings)
@@ -170,7 +170,7 @@
 ; Rewrite `($letrec* (params-with-values) ...)` into `($letrec ((param val)) ($letrec ((param val)) ...))`
 ($define! $letrec*
   ($macro (bindings . body)
-    (the list bindings)
+    ($the list bindings)
     ($if (null? bindings)
       (list* $letrec bindings body)
       (list $letrec
@@ -253,7 +253,7 @@
 
 ($define! foldr
   ($lambda (f z xs)
-    (the applicative f)
+    ($the applicative f)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -263,7 +263,7 @@
 
 ($define! foldl
   ($lambda (f z xs)
-    (the applicative f)
+    ($the applicative f)
     ($define! go
       ($lambda (acc xs)
         ($if (null? xs)
@@ -331,7 +331,7 @@
 
 ($define! filter
   ($lambda (pred xs)
-    (the applicative pred)
+    ($the applicative pred)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)
@@ -350,7 +350,7 @@
 
 ($define! for-each
   ($lambda (f xs)
-    (the applicative f)
+    ($the applicative f)
     ($define! go
       ($lambda (xs)
         ($if (null? xs)

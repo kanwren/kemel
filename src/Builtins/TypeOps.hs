@@ -41,7 +41,7 @@ builtinTypeOps = helpers <> typePreds
   where
     helpers =
       [ ("type-of", builtinApp typeOf)
-      , ("the", builtinOp primThe)
+      , ("$the", builtinOp primThe)
       , ("type?", builtinApp primTypep)
       ]
     typePreds = fmap mkPred
@@ -75,11 +75,11 @@ typeOf _ args = numArgs "type-of" 1 args
 primThe :: Builtin
 primThe env [spec, v] = do
   v' <- eval env v
-  valid <- typep "the" v' spec
+  valid <- typep "$the" v' spec
   if valid
     then pure v'
-    else evalError $ "the: expected type " <> showt spec <> ", but value " <> showt v' <> " has type " <> renderType v'
-primThe _ args = numArgs "the" 2 args
+    else evalError $ "$the: expected type " <> showt spec <> ", but value " <> showt v' <> " has type " <> renderType v'
+primThe _ args = numArgs "$the" 2 args
 
 primTypep :: Builtin
 primTypep _ [v, e] = LBool <$> typep "type?" v e
