@@ -1,7 +1,7 @@
 ;;;; Mutable cons cells
 
 ($provide! (cell? cell-cons cell-car cell-cdr set-cell-car! set-cell-cdr!)
-  ($declare-record! cell (car cdr))
+  ($declare-record-type! cell (car cdr))
   ($define! cell-cons cell))
 
 ($define! list->cell
