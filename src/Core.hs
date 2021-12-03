@@ -9,22 +9,22 @@ module Core where
 import Control.Monad.Except
 import Control.Monad.Writer
 import Data.Foldable (traverse_)
-import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import TextShow (TextShow(..))
+import qualified Data.HashTable.IO as HIO
 
 import Errors
 import Parser (parseFile)
 import Types
 
 lookupVar :: Symbol -> Environment -> Eval (Maybe Expr)
-lookupVar i (Environment envVar parents) = do
-  mapping <- liftIO $ readIORef envVar
-  case mapping Map.!? i of
+lookupVar i (Environment table parents) = do
+  mapping <- liftIO $ HIO.lookup table i
+  case mapping of
+    Just x  -> pure $ Just x
     Nothing -> do
       let
         go [] = pure Nothing
@@ -32,16 +32,9 @@ lookupVar i (Environment envVar parents) = do
           Just x -> pure $ Just x
           Nothing -> go envs
       go parents
-    Just x  -> fmap Just $ liftIO $ readIORef x
 
 defineVar :: Symbol -> Expr -> Environment -> Eval ()
-defineVar i val (Environment envVar _) = do
-  mapping <- liftIO $ readIORef envVar
-  case mapping Map.!? i of
-    Nothing -> do
-      ref <- liftIO $ newIORef val
-      liftIO $ writeIORef envVar $ Map.insert i ref mapping
-    Just ref -> liftIO $ writeIORef ref val
+defineVar i val (Environment table _) = liftIO $ HIO.insert table i val
 
 parseParamTree :: Symbol -> Expr -> Eval ParamTree
 parseParamTree name = go

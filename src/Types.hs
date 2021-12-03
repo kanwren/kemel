@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Types where
 
@@ -14,19 +15,18 @@ import Control.Monad.IO.Class
 import Control.Monad.State (MonadState, StateT(..), state)
 import Data.CaseInsensitive (CI, foldedCase, mk)
 import Data.Default (Default(..))
-import Data.IORef (IORef, newIORef)
+import Data.Hashable (Hashable)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as Map
 import Data.String (IsString(..))
 import Data.Text (Text)
 import TextShow (TextShow(..))
 import TextShow qualified (fromText, unwordsB, FromTextShow(..))
+import qualified Data.HashTable.IO as HIO
 
 -- | The data type of all variable names
 newtype Symbol = Symbol (CI Text)
-  deriving newtype (Eq, Ord, IsString)
+  deriving newtype (Eq, Ord, IsString, Hashable)
 
 instance TextShow Symbol where
   showb (Symbol s) = TextShow.fromText (foldedCase s)
@@ -146,21 +146,22 @@ newtype Error = EvalError Text
 -- environments.
 data Environment =
   Environment
-    (IORef (Map Symbol (IORef Expr)))
+    (HIO.BasicHashTable Symbol Expr)
     -- ^ The variable bindings in this environment
     [Environment]
     -- ^ The parent environments
-  deriving stock (Eq)
+
+instance Eq Environment where
+  _ == _ = False -- TODO: equate on STRefs
 
 newEnvironment :: [Environment] -> IO Environment
 newEnvironment parents = do
-  m <- newIORef mempty
+  m <- HIO.new
   pure $ Environment m parents
 
 newEnvironmentWith :: [(Symbol, Expr)] -> [Environment] -> IO Environment
 newEnvironmentWith bindings parents = do
-  vars <- traverse (\(x, y) -> (x,) <$> newIORef y) bindings
-  m <- newIORef $ Map.fromList vars
+  m <- HIO.fromList bindings
   pure $ Environment m parents
 
 -- Symbol generation
