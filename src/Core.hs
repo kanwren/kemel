@@ -33,9 +33,6 @@ lookupVar i (Environment table parents) = do
           Nothing -> go envs
       go parents
 
-defineVar :: Symbol -> Expr -> Environment -> Eval ()
-defineVar i val (Environment table _) = liftIO $ HIO.insert table i val
-
 parseParamTree :: Symbol -> Expr -> Eval ParamTree
 parseParamTree name = go
   where

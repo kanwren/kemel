@@ -13,9 +13,10 @@ import Data.Unique (newUnique)
 import TextShow (showt)
 
 import Builtins.Utils (builtinOp, builtinApp, allM)
-import Core (eval, parseParamTree, matchParams, defineVar, lookupVar, progn)
+import Core (eval, parseParamTree, matchParams, lookupVar, progn)
 import Errors
 import Types
+import qualified Data.HashTable.IO as HIO
 
 builtinBootstrap :: [(Symbol, Expr)]
 builtinBootstrap =
@@ -52,11 +53,11 @@ vau staticEnv [params, env, body] = do
 vau _ args = numArgs "$vau" 3 args
 
 define :: Builtin
-define env [bs, ps] = LInert <$ do
+define env@(Environment table _) [bs, ps] = LInert <$ do
   tree <- parseParamTree "$define!" bs
   ps' <- eval env ps
   bindings <- matchParams "$define!" tree ps'
-  traverse_ (\(name, val) -> defineVar name val env) bindings
+  liftIO $ traverse_ (uncurry (HIO.insert table)) bindings
 define _ args = numArgs "$define!" 2 args
 
 primEval :: Builtin
