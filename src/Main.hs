@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Applicative.Combinators (optional)
 import Control.Exception (SomeException, displayException)
 import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Error.Class (catchError)
@@ -16,13 +17,17 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
-import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLine)
-import System.Environment (getArgs)
+import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLine, Settings(..), setComplete)
+import System.Console.Haskeline.Completion
+import System.Environment (getArgs, getEnv)
+import System.FilePath ((</>))
 
 import Builtins (makeGround)
 import Core (evalFile, progn)
 import Parser (pExprs)
-import Types (Eval(..), Expr(..), Environment, Error(..))
+import Types (Eval(..), Expr(..), Environment(..), Error(..), Symbol)
+import qualified Data.HashTable.IO as HIO
+import TextShow (showt)
 
 handleError :: MonadIO m => (a -> m ()) -> Either Error a -> m ()
 handleError h = \case
@@ -36,9 +41,27 @@ handleExceptions = flip catch $ \(e :: SomeException) -> liftIO $ putStrLn $ "<t
 loadAndRun :: (Environment -> Eval a) -> IO (Either Error a)
 loadAndRun act = runEval $ makeGround >>= act
 
+-- TODO: don't try to complete in a string or after a comment
+completeSymbol :: Environment -> CompletionFunc Eval
+completeSymbol env = completeWord Nothing " \t\n\r();\"" search
+  where
+    search prefix = do
+      let prefix' = Text.pack prefix
+      symbols <- liftIO $ fmap showt <$> walkEnvironment env
+      let valid = filter (Text.isPrefixOf prefix') symbols
+      pure $ fmap (simpleCompletion. Text.unpack) valid
+    walkEnvironment :: Environment -> IO [Symbol]
+    walkEnvironment (Environment table parents) = (++)
+      <$> do fmap fst <$> HIO.toList table
+      <*> do concat <$> traverse walkEnvironment parents
+
 repl :: IO ()
 repl = do
-  res <- loadAndRun $ \env -> runInputT defaultSettings (loop env Nothing)
+  res <- loadAndRun $ \env -> do
+    home <- liftIO $ optional (getEnv "HOME")
+    let histFile = (</> ".kemel_history") <$> home
+    let settings = setComplete (completeSymbol env) $ defaultSettings { historyFile = histFile, autoAddHistory = True }
+    runInputT settings (loop env Nothing)
   handleError (\_ -> pure ()) res
   where
     runLine :: Environment -> [Expr] -> InputT Eval ()

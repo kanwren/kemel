@@ -55,6 +55,7 @@ executable kemel
                       , data-default
                       , hashtables
                       , hashable
+                      , filepath
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options:
