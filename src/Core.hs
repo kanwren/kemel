@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Core where
 
@@ -20,26 +21,28 @@ import Errors
 import Parser (parseFile)
 import Types
 
-lookupVar :: Symbol -> Environment -> Eval (Maybe Expr)
-lookupVar i (Environment table parents) = do
+defineVar :: Environment r -> Symbol -> Expr r -> Eval r ()
+defineVar (Environment table _) i v = liftIO $ HIO.insert table i v
+
+lookupVar :: Environment r -> Symbol -> Eval r (Maybe (Expr r))
+lookupVar (Environment table parents) i = do
   mapping <- liftIO $ HIO.lookup table i
   case mapping of
     Just x  -> pure $ Just x
     Nothing -> do
       let
         go [] = pure Nothing
-        go (env:envs) = lookupVar i env >>= \case
+        go (env:envs) = lookupVar env i >>= \case
           Just x -> pure $ Just x
           Nothing -> go envs
       go parents
 
-parseParamTree :: Symbol -> Expr -> Eval ParamTree
+parseParamTree :: Symbol -> Expr r -> Eval r ParamTree
 parseParamTree name = go
   where
-    single :: Expr -> Eval Binder
     single LIgnore = pure IgnoreBinder
     single (LSymbol s) = pure $ NamedBinder s
-    single x = evalError $ showt name <> ": invalid paramtere tree: " <> showt x
+    single x = evalError $ showt name <> ": invalid parameter tree: " <> showt x
 
     go (LList ps) = ParamList <$> traverse go ps
     go (LDottedList ps p) = ParamDottedList <$> traverseNE go ps <*> single p
@@ -48,10 +51,10 @@ parseParamTree name = go
         traverseNE f (x :| xs) = (:|) <$> f x <*> traverse f xs
     go x = BoundParam <$> single x
 
-matchParams :: Symbol -> ParamTree -> Expr -> Eval [(Symbol, Expr)]
+matchParams :: Symbol -> ParamTree -> Expr r -> Eval r [(Symbol, Expr r)]
 matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
   where
-    bind :: MonadWriter [(Symbol, Expr)] m => Binder -> Expr -> m ()
+    bind :: MonadWriter [(Symbol, Expr r)] m => Binder -> Expr r -> m ()
     bind IgnoreBinder _ = pure ()
     bind (NamedBinder s) v = tell [(s, v)]
 
@@ -61,10 +64,10 @@ matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
     zipLeftover [] (y:ys) = ([], Just (Right (y:ys)))
     zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
 
-    toError :: Text -> WriterT [(Symbol, Expr)] (Except Error) ()
+    toError :: Text -> WriterT [(Symbol, Expr r)] (Except Error) ()
     toError e = evalError $ showt name <> ": " <> e
 
-    go :: ParamTree -> Expr -> WriterT [(Symbol, Expr)] (Except Error) ()
+    go :: ParamTree -> Expr r -> WriterT [(Symbol, Expr r)] (Except Error) ()
     go (BoundParam b) p = bind b p
     go (ParamList bs) (LList ps) =
       case zipLeftover bs ps of
@@ -89,15 +92,15 @@ matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
     go (ParamDottedList _ _) x = typeError name "a list to unpack" x
 
 -- Evaluate a list of expressions and return the value of the final expression
-progn :: Environment -> [Expr] -> Eval Expr
+progn :: Environment r -> [Expr r] -> Eval r (Expr r)
 progn env = go
   where
     go [] = pure LInert
     go [x] = eval env x
     go (x:y) = eval env x *> go y
 
-eval :: Environment -> Expr -> Eval Expr
-eval env (LSymbol sym)      = lookupVar sym env >>= \case
+eval :: Environment r -> Expr r -> Eval r (Expr r)
+eval env (LSymbol sym)      = lookupVar env sym >>= \case
   Just x  -> pure x
   Nothing -> evalError $ "variable not in scope: " <> showt sym
 eval env (LDottedList xs _) = eval env (LList (NonEmpty.toList xs))
@@ -108,27 +111,24 @@ eval env (LList (f:args))   = eval env f >>= \case
 -- everything other than a list and a symbol is a self-evaluating expression
 eval _   f                  = pure f
 
-combine :: Environment -> Combiner -> [Expr] -> Eval Expr
+combine :: Environment r -> Combiner r -> [Expr r] -> Eval r (Expr r)
 combine env (OperativeCombiner c) args = operate env c args
 combine env (ApplicativeCombiner c) args = traverse (eval env) args >>= combine env c
 
-operate :: Environment -> Operative -> [Expr] -> Eval Expr
+operate :: Environment r -> Operative r -> [Expr r] -> Eval r (Expr r)
 operate env c args = do
   case c of
     BuiltinOp f -> f env args
     UserOp Closure{..} -> do
-      let
-        dynamicEnvBinding :: Maybe (Symbol, Expr)
-        dynamicEnvBinding =
-          case closureDynamicEnv of
-            IgnoreBinder -> Nothing
-            NamedBinder n -> Just (n, LEnv env)
       paramBinds <- matchParams "<combiner>" closureParams (LList args)
-      let binds = maybe paramBinds (:paramBinds) dynamicEnvBinding
+      let binds = maybe paramBinds (:paramBinds) $ do
+            case closureDynamicEnv of
+              IgnoreBinder -> Nothing
+              NamedBinder n -> Just (n, LEnv env)
       env' <- liftIO $ newEnvironmentWith binds [closureStaticEnv]
       eval env' closureBody
 
-evalFile :: Environment -> Text -> Eval Expr
+evalFile :: Environment r -> Text -> Eval r (Expr r)
 evalFile env contents =
   case parseFile contents of
     Right res -> progn env res

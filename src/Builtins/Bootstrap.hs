@@ -12,12 +12,11 @@ import Data.Unique (newUnique)
 import TextShow (showt)
 
 import Builtins.Utils (builtinOp, builtinApp, allM)
-import Core (eval, parseParamTree, matchParams, lookupVar, progn)
+import Core (eval, parseParamTree, matchParams, lookupVar, progn, defineVar)
 import Errors
 import Types
-import qualified Data.HashTable.IO as HIO
 
-builtinBootstrap :: [(Symbol, Expr)]
+builtinBootstrap :: [(Symbol, Expr r)]
 builtinBootstrap =
   [ ("$vau", builtinOp vau)
   , ("$define!", builtinOp define)
@@ -34,7 +33,7 @@ builtinBootstrap =
 
 -- NOTE: this is later redefined in the prelude to be able to compensate for
 -- automatically $sequencing bodies
-vau :: Builtin
+vau :: Builtin r
 vau staticEnv [params, env, body] = do
   envName <- case env of
     LIgnore   -> pure IgnoreBinder
@@ -51,41 +50,41 @@ vau staticEnv [params, env, body] = do
   pure $ LCombiner $ OperativeCombiner $ UserOp closure
 vau _ args = numArgs "$vau" 3 args
 
-define :: Builtin
-define env@(Environment table _) [bs, ps] = LInert <$ do
+define :: Builtin r
+define env [bs, ps] = LInert <$ do
   tree <- parseParamTree "$define!" bs
   ps' <- eval env ps
   bindings <- matchParams "$define!" tree ps'
-  liftIO $ traverse_ (uncurry (HIO.insert table)) bindings
+  traverse_ (uncurry (defineVar env)) bindings
 define _ args = numArgs "$define!" 2 args
 
-primEval :: Builtin
+primEval :: Builtin r
 primEval _ [e, x] = getEnvironment "eval" x >>= \env -> eval env e
 primEval _ args = numArgs "eval" 2 args
 
-primWrap :: Builtin
+primWrap :: Builtin r
 primWrap _ [x] = LCombiner . ApplicativeCombiner <$> getCombiner "wrap" x
 primWrap _ args = numArgs "wrap" 1 args
 
-primUnwrap :: Builtin
+primUnwrap :: Builtin r
 primUnwrap _ [x] = getCombiner "unwrap" x >>= \case
   ApplicativeCombiner c -> pure $ LCombiner c
   OperativeCombiner _ -> evalError "unwrap: combiner not applicative"
 primUnwrap _ args = numArgs "unwrap" 1 args
 
-primIf :: Builtin
+primIf :: Builtin r
 primIf env [cond, x, y] = do
   b <- getBool "$if" =<< eval env cond
   if b then eval env x else eval env y
 primIf _ args = numArgs "$if" 3 args
 
-makeEnvironment :: Builtin
+makeEnvironment :: Builtin r
 makeEnvironment _ args = do
   parents <- traverse (getEnvironment "make-environment") args
   env <- liftIO $ newEnvironment parents
   pure $ LEnv env
 
-makeEncapsulation :: Builtin
+makeEncapsulation :: Builtin r
 makeEncapsulation _ [] = do
   typeId <- liftIO newUnique
   let
@@ -106,19 +105,19 @@ makeEncapsulation _ [] = do
   pure $ LList [encapsulate, test, decapsulate]
 makeEncapsulation _ args = numArgs "make-encapsulation-type" 0 args
 
-cons :: Builtin
+cons :: Builtin r
 cons _ [x, LList y] = pure $ LList (x:y)
 cons _ [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
 cons _ [x, y] = pure $ LDottedList (x :| []) y
 cons _ args = numArgs "cons" 2 args
 
-binds :: Builtin
+binds :: Builtin r
 binds env (envExpr:args) = do
   targetEnv <- eval env envExpr >>= \case
     LEnv targetEnv -> pure targetEnv
     x -> evalError $ "$binds?: expected environment, but got " <> renderType x
   syms <- traverse (getSymbol "$binds?") args
-  let isBound sym = isJust <$> lookupVar sym targetEnv
+  let isBound sym = isJust <$> lookupVar targetEnv sym
   LBool <$> allM isBound syms
 binds _ [] = numArgsAtLeast "$binds?" 1 []
 

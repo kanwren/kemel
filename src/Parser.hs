@@ -32,7 +32,7 @@ symbol s = string s <* space
 label :: String -> Parser a -> Parser a
 label l f = f <?> l
 
-pExpr :: Parser Expr
+pExpr :: Parser (Expr r)
 pExpr = choice
   [ pList
   , label "string literal" $ LString . Text.pack <$> (char '"' *> ((char '\\' *> anyChar) <|> anyChar) `manyTill` char '"')
@@ -65,8 +65,8 @@ pExpr = choice
     prependList [] (y:|ys) = y:|ys
     prependList (x:xs) (y:|ys) = x :| (xs ++ y : ys)
 
-pExprs :: Parser [Expr]
+pExprs :: Parser [Expr r]
 pExprs = space *> manyTill (lexeme pExpr) endOfInput
 
-parseFile :: Text -> Either String [Expr]
+parseFile :: Text -> Either String [Expr r]
 parseFile = parseOnly pExprs

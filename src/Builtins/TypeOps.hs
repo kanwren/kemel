@@ -11,10 +11,10 @@ import Core (eval)
 import Errors
 import Types
 
-typep :: Symbol -> Expr -> Expr -> Eval Bool
+typep :: Symbol -> Expr r -> Expr r -> Eval r Bool
 typep name v = go
   where
-    go :: Expr -> Eval Bool
+    go :: Expr r -> Eval r Bool
     go (LSymbol s) =
       case symbolToTypePred s of
         Just p  -> pure $ p v
@@ -36,7 +36,7 @@ typep name v = go
         _ -> pure False
     go _ = evalError $ showt name <> ": invalid type specifier"
 
-builtinTypeOps :: [(Symbol, Expr)]
+builtinTypeOps :: [(Symbol, Expr r)]
 builtinTypeOps = helpers <> typePreds
   where
     helpers =
@@ -54,6 +54,7 @@ builtinTypeOps = helpers <> typePreds
       , "string"
       , "symbol"
       , "environment"
+      , "continuation"
       , "null"
       , "list"
       , "pair"
@@ -68,11 +69,11 @@ builtinTypeOps = helpers <> typePreds
         app _ = fmap (LBool . and) . traverse (\v -> typep predName v (LSymbol typeName))
       in (predName, builtinApp app)
 
-typeOf :: Builtin
+typeOf :: Builtin r
 typeOf _ [v] = pure $ LSymbol $ typeToSymbol v
 typeOf _ args = numArgs "type-of" 1 args
 
-primThe :: Builtin
+primThe :: Builtin r
 primThe env [spec, v] = do
   v' <- eval env v
   valid <- typep "$the" v' spec
@@ -81,6 +82,6 @@ primThe env [spec, v] = do
     else evalError $ "$the: expected type " <> showt spec <> ", but value " <> showt v' <> " has type " <> renderType v'
 primThe _ args = numArgs "$the" 2 args
 
-primTypep :: Builtin
+primTypep :: Builtin r
 primTypep _ [v, e] = LBool <$> typep "type?" v e
 primTypep _ args = numArgs "type?" 2 args

@@ -33,6 +33,7 @@ executable kemel
       Types
       Builtins
         Builtins.Bootstrap
+        Builtins.Continuations
         Builtins.TypeOps
         Builtins.Primitives
         Builtins.Utils

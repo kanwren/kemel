@@ -2,10 +2,10 @@ module Builtins.Utils where
 
 import Types
 
-builtinApp :: Builtin -> Expr
+builtinApp :: Builtin r -> Expr r
 builtinApp f = LCombiner $ ApplicativeCombiner $ OperativeCombiner $ BuiltinOp f
 
-builtinOp :: Builtin -> Expr
+builtinOp :: Builtin r -> Expr r
 builtinOp f = LCombiner $ OperativeCombiner $ BuiltinOp f
 
 allM :: (Foldable f, Monad m) => (a -> m Bool) -> f a -> m Bool

@@ -21,13 +21,15 @@ import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLin
 import System.Console.Haskeline.Completion
 import System.Environment (getArgs, getEnv)
 import System.FilePath ((</>))
+import Data.HashTable.IO qualified as HIO
+import TextShow (showt)
+import Control.Monad.Cont (callCC)
 
 import Builtins (makeGround)
-import Core (evalFile, progn)
+import Core (evalFile, progn, defineVar)
 import Parser (pExprs)
 import Types (Eval(..), Expr(..), Environment(..), Error(..), Symbol)
-import qualified Data.HashTable.IO as HIO
-import TextShow (showt)
+import Control.Monad (void)
 
 handleError :: MonadIO m => (a -> m ()) -> Either Error a -> m ()
 handleError h = \case
@@ -38,11 +40,15 @@ handleExceptions :: (MonadIO m, MonadCatch m) => m () -> m ()
 handleExceptions = flip catch $ \(e :: SomeException) -> liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
 
 -- | Run a program in a child environment of the standard environment
-loadAndRun :: (Environment -> Eval a) -> IO (Either Error a)
-loadAndRun act = runEval $ makeGround >>= act
+loadAndRun :: (Environment () -> Eval () b) -> IO ()
+loadAndRun act = void $ flip runEval pure $ do
+  void $ callCC $ \k -> do
+    _ <- act =<< makeGround k
+    pure LInert
+  pure $ Right ()
 
 -- TODO: don't try to complete in a string or after a comment
-completeSymbol :: Environment -> CompletionFunc Eval
+completeSymbol :: Environment r -> CompletionFunc (Eval r)
 completeSymbol env =
     completeWord Nothing " \t\n\r();\"" search
     `fallbackCompletion`
@@ -53,25 +59,30 @@ completeSymbol env =
       symbols <- liftIO $ fmap showt <$> walkEnvironment env
       let valid = filter (Text.isPrefixOf prefix') symbols
       pure $ fmap (simpleCompletion. Text.unpack) valid
-    walkEnvironment :: Environment -> IO [Symbol]
+    walkEnvironment :: Environment r -> IO [Symbol]
     walkEnvironment (Environment table parents) = (++)
       <$> do fmap fst <$> HIO.toList table
       <*> do concat <$> traverse walkEnvironment parents
 
 repl :: IO ()
 repl = do
-  res <- loadAndRun $ \env -> do
+  loadAndRun $ \env -> do
     home <- liftIO $ optional (getEnv "HOME")
     let histFile = (</> ".kemel_history") <$> home
     let settings = setComplete (completeSymbol env) $ defaultSettings { historyFile = histFile, autoAddHistory = True }
     runInputT settings (loop env Nothing)
-  handleError (\_ -> pure ()) res
   where
-    runLine :: Environment -> [Expr] -> InputT Eval ()
+    runLine :: Environment r -> [Expr r] -> InputT (Eval r) ()
     runLine env exprs = lift $ handleExceptions $ do
-      res <- (Right <$> progn env exprs) `catchError` (pure . Left)
+      let
+        -- TODO: log errors (probably by adding an error type to the AST and
+        -- removing ExceptT)
+        code = callCC $ \k -> do
+          defineVar env "error-continuation" (LContinuation k)
+          progn env exprs
+      res <- (Right <$> code) `catchError` (pure . Left)
       handleError (\case LInert -> pure (); e -> liftIO (print e)) res
-    loop :: Environment -> Maybe Text -> InputT Eval ()
+    loop :: Environment r -> Maybe Text -> InputT (Eval r) ()
     loop env pending = do
       input <- getInputLine $ case pending of Nothing -> "> "; Just _ -> "...| "
       case Text.pack <$> input of
@@ -94,9 +105,10 @@ repl = do
 runFile :: String -> IO ()
 runFile path = do
   contents <- Text.IO.readFile path
-  handleExceptions $ do
-    res <- loadAndRun $ \env -> evalFile env contents
-    handleError (\_ -> pure ()) res
+  handleExceptions $ loadAndRun $ \env -> do
+    callCC $ \k -> do
+      defineVar env "error-continuation" (LContinuation k)
+      evalFile env contents
 
 main :: IO ()
 main = getArgs >>= \case
