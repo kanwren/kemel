@@ -377,3 +377,4 @@
 (load (get-data-file-path "prelude/cells.lsp"))
 (load (get-data-file-path "prelude/promises.lsp"))
 (load (get-data-file-path "prelude/generators.lsp"))
+(load (get-data-file-path "prelude/coop-threads.lsp"))
