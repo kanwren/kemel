@@ -65,7 +65,13 @@ matchParams name tree args = liftEither $ runExcept $ execWriterT $ go tree args
     zipLeftover (x:xs) (y:ys) = let (res, lo) = zipLeftover xs ys in ((x, y):res, lo)
 
     toError :: Text -> WriterT [(Symbol, Expr r)] (Except Error) ()
-    toError e = evalError $ showt name <> ": " <> e
+    toError e = evalError $ showt name <> ": " <> e <> "; " <> showt (renderTree tree) <> " <- " <> showt args
+      where
+        renderTree :: ParamTree -> Expr r
+        renderTree (BoundParam IgnoreBinder) = LIgnore
+        renderTree (BoundParam (NamedBinder s)) = LSymbol s
+        renderTree (ParamList ps) = LList (fmap renderTree ps)
+        renderTree (ParamDottedList ps p) = LDottedList (fmap renderTree ps) (renderTree (BoundParam p))
 
     go :: ParamTree -> Expr r -> WriterT [(Symbol, Expr r)] (Except Error) ()
     go (BoundParam b) p = bind b p
@@ -105,9 +111,9 @@ eval env (LSymbol sym)      = lookupVar env sym >>= \case
   Nothing -> evalError $ "variable not in scope: " <> showt sym
 eval env (LDottedList xs _) = eval env (LList (NonEmpty.toList xs))
 eval _   (LList [])         = pure $ LList []
-eval env (LList (f:args))   = eval env f >>= \case
+eval env l@(LList (f:args))   = eval env f >>= \case
   LCombiner c -> combine env c args
-  e -> evalError $ "expected combiner in call: " <> showt e
+  e -> evalError $ "expected combiner in call, but got " <> renderType e <> ": " <> showt l
 -- everything other than a list and a symbol is a self-evaluating expression
 eval _   f                  = pure f
 
