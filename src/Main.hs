@@ -43,7 +43,10 @@ loadAndRun act = runEval $ makeGround >>= act
 
 -- TODO: don't try to complete in a string or after a comment
 completeSymbol :: Environment -> CompletionFunc Eval
-completeSymbol env = completeWord Nothing " \t\n\r();\"" search
+completeSymbol env =
+    completeWord Nothing " \t\n\r();\"" search
+    `fallbackCompletion`
+    completeFilename
   where
     search prefix = do
       let prefix' = Text.pack prefix

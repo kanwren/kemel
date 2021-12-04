@@ -2,7 +2,7 @@
   ($define! compare-pairs
     ($lambda (xs)
       (sum (map
-             ($lambda (ys) ($if (< (car ys) (cadr ys)) 1 0))
+             ($lambda ((a b)) ($if (< a b) 1 0))
              (list-neighbors xs)))))
 
   ($define! solve-part-a
