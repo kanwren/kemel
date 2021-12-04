@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Main where
+module Main (main) where
 
 import Control.Applicative.Combinators (optional)
 import Control.Exception (SomeException, displayException)
@@ -31,17 +31,12 @@ import Parser (pExprs)
 import Types (Eval(..), Expr(..), Environment(..), Error(..), Symbol)
 import Control.Monad (void)
 
-handleError :: MonadIO m => (a -> m ()) -> Either Error a -> m ()
-handleError h = \case
-  Left (EvalError e) -> liftIO $ putStrLn $ Text.unpack e
-  Right v -> h v
-
 handleExceptions :: (MonadIO m, MonadCatch m) => m () -> m ()
 handleExceptions = flip catch $ \(e :: SomeException) -> liftIO $ putStrLn $ "<toplevel>: exception: " <> displayException e
 
 -- | Run a program in a child environment of the standard environment
-loadAndRun :: (Environment () -> Eval () b) -> IO ()
-loadAndRun act = void $ flip runEval pure $ do
+loadAndRun :: (Environment () -> Eval () b) -> IO (Either Error ())
+loadAndRun act = flip runEval pure $ do
   void $ callCC $ \k -> do
     _ <- act =<< makeGround k
     pure LInert
@@ -66,11 +61,12 @@ completeSymbol env =
 
 repl :: IO ()
 repl = do
-  loadAndRun $ \env -> do
+  _ <- loadAndRun $ \env -> do
     home <- liftIO $ optional (getEnv "HOME")
     let histFile = (</> ".kemel_history") <$> home
     let settings = setComplete (completeSymbol env) $ defaultSettings { historyFile = histFile, autoAddHistory = True }
     runInputT settings (loop env Nothing)
+  pure ()
   where
     runLine :: Environment r -> [Expr r] -> InputT (Eval r) ()
     runLine env exprs = lift $ handleExceptions $ do
@@ -81,7 +77,10 @@ repl = do
           defineVar env "error-continuation" (LContinuation k)
           progn env exprs
       res <- (Right <$> code) `catchError` (pure . Left)
-      handleError (\case LInert -> pure (); e -> liftIO (print e)) res
+      case res of
+        Right LInert -> pure ()
+        Right val -> liftIO $ print val
+        Left (EvalError e) -> liftIO $ putStrLn $ Text.unpack e
     loop :: Environment r -> Maybe Text -> InputT (Eval r) ()
     loop env pending = do
       input <- getInputLine $ case pending of Nothing -> "> "; Just _ -> "...| "
@@ -105,10 +104,14 @@ repl = do
 runFile :: String -> IO ()
 runFile path = do
   contents <- Text.IO.readFile path
-  handleExceptions $ loadAndRun $ \env -> do
-    callCC $ \k -> do
-      defineVar env "error-continuation" (LContinuation k)
-      evalFile env contents
+  handleExceptions $ do
+    res <- loadAndRun $ \env -> do
+      callCC $ \k -> do
+        defineVar env "error-continuation" (LContinuation k)
+        evalFile env contents
+    case res of
+      Left (EvalError e) -> putStrLn $ Text.unpack e
+      Right () -> pure ()
 
 main :: IO ()
 main = getArgs >>= \case
