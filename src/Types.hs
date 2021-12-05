@@ -220,7 +220,7 @@ genSym :: IO Symbol
 genSym = do
   n <- atomicModifyIORef' symbolSource $ \cur ->
     let new = cur + 1
-    in (cur, new)
+    in (new, cur)
   pure $ Symbol $ mk $ "#:g" <> showt n
 
 -- | The monad for evaluating expressions.
