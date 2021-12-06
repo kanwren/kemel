@@ -22,10 +22,10 @@
       ($define! iter-cont #inert)
       ($define! done #f)
       ($define! yield
-        ($lambda (arg)
+        ($lambda args
           ($let/cc k
             ($set! local iter-cont k)
-            (apply-continuation prompt-cont (list arg)))))
+            (apply-continuation prompt-cont (list (arg-or-inert args))))))
 
       ($lambda response ; what to send back to the generator to substitute for the yield
         ($if done
