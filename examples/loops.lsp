@@ -17,8 +17,8 @@
   ($when (> a 7) (break))
   (print a))
 
-(print "for-each:")
-($for-each x (range 1 11)
+(print "for")
+($for x (range 1 11)
   ($when (= 0 (mod x 2)) (continue))
   ($when (> x 7) (break))
   (print x))

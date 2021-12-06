@@ -1,4 +1,4 @@
-($provide! ($loop $while $do-while $while-then $for-each)
+($provide! ($loop $while $do-while $while-then $for)
   ($define! make-label
     ($lambda ()
       ($let/cc k
@@ -85,7 +85,7 @@
                 final
                 (list loop-start-label-name))))))
 
-  ($define! $for-each
+  ($define! $for
     ($macro (binder iter . body)
       ($the symbol binder)
       ($let ((break-cont-name (gensym))
