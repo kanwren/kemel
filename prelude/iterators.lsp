@@ -140,11 +140,28 @@
          (range first (car rest) 1))
         ((null? (cddr rest))
          ($let ((upper (car rest)) (step (cadr rest)))
-           ($generator
-             ($define! go
-               ($lambda (n)
-                 ($when ($or? (ignore? upper) (< n upper))
-                   (yield n)
-                   (go (+ n step)))))
-             (go first))))
+           ($cond
+             ((ignore? upper)
+              ($generator
+                ($define! go
+                  ($lambda (n)
+                    ($when (< n upper)
+                      (yield n)
+                      (go (+ n step)))))
+                (go first)))
+             ((< step 0)
+              ($generator
+                ($define! go
+                  ($lambda (n)
+                    ($when (> n upper)
+                      (yield n)
+                      (go (+ n step)))))
+                (go first)))
+             (#t
+              ($generator
+                ($define! go
+                  ($lambda (n)
+                    (yield n)
+                    (go (+ n step))))
+                (go first))))))
         (otherwise ($the null (cdddr rest)))))))
