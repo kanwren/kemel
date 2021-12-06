@@ -1,4 +1,4 @@
-($provide! (list->iter iter->list for/iter map/iter filter/iter foldr/iter foldl/iter append/iter take/iter drop/iter zip-with/iter range)
+($provide! (list->iter iter->list take/iter drop/iter take-while/iter drop-while/iter for/iter map/iter filter/iter foldr/iter foldl/iter append/iter zip-with/iter range)
   ($define! list->iter
     ($lambda (xs)
       ($generator
@@ -29,6 +29,18 @@
               (go (+ i 1)))))
         (go 0))))
 
+  ($define! take-while/iter
+    ($lambda (f iter)
+      ($the applicative f)
+      ($generator
+        ($define! go
+          ($lambda ()
+            ($let ((x (next iter)))
+              ($when (f x)
+               (yield x)
+               (go)))))
+        (go))))
+
   ($define! drop/iter
     ($lambda (n iter)
       ($generator
@@ -40,6 +52,20 @@
         ($define! rest
           ($lambda () (yield (next iter)) (rest)))
         (go 0))))
+
+  ($define! drop-while/iter
+    ($lambda (f iter)
+      ($the applicative f)
+      ($generator
+        ($define! go
+          ($lambda ()
+            ($let ((x (next iter)))
+              ($if (f x)
+               ($sequence (next iter) (go))
+               ($sequence (yield (next iter)) (rest))))))
+        ($define! rest
+          ($lambda () (yield (next iter)) (rest)))
+        (go))))
 
   ($define! map/iter
     ($lambda (f iter)
@@ -145,9 +171,8 @@
               ($generator
                 ($define! go
                   ($lambda (n)
-                    ($when (< n upper)
-                      (yield n)
-                      (go (+ n step)))))
+                    (yield n)
+                    (go (+ n step))))
                 (go first)))
              ((< step 0)
               ($generator
@@ -161,7 +186,8 @@
               ($generator
                 ($define! go
                   ($lambda (n)
-                    (yield n)
-                    (go (+ n step))))
+                    ($when (< n upper)
+                      (yield n)
+                      (go (+ n step)))))
                 (go first))))))
         (otherwise ($the null (cdddr rest)))))))

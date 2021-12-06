@@ -99,6 +99,8 @@
                                   (list apply-continuation break-cont-name
                                         (list list (list arg-or-inert ($quote args)))))))
                 (list $define! iterator-name iter)
+                (list $the (list ($quote or) ($quote applicative) ($quote list)) iterator-name)
+                (list $define! iterator-name (list $if (list list? iterator-name) (list list->iter iterator-name) iterator-name))
                 (list $define! loop-start-label-name (list make-label))
                 (list $define! binder (list next iterator-name))
                 (list $when (list equal? binder :done) (list apply-continuation break-cont-name (list list #inert)))
