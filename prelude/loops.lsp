@@ -1,4 +1,4 @@
-($provide! ($while $do-while $while-then $for-each)
+($provide! ($loop $while $do-while $while-then $for-each)
   ($define! make-label
     ($lambda ()
       ($let/cc k
@@ -13,6 +13,21 @@
         ($sequence
           ($the null (cdr args))
           (car args)))))
+
+  ($define! $loop
+    ($macro body
+      ($let ((break-cont-name (gensym))
+             (loop-start-label-name (gensym)))
+        (list $let/cc break-cont-name
+              (list
+                $let
+                (list (list ($quote break)
+                            (list $lambda ($quote args)
+                                  (list apply-continuation break-cont-name
+                                        (list list (list arg-or-inert ($quote args)))))))
+                (list $define! loop-start-label-name (list make-label))
+                (cons $sequence body)
+                (list loop-start-label-name))))))
 
   ($define! $do-while
     ($macro (cond . body)
