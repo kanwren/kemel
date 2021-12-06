@@ -1,5 +1,4 @@
 - Implement guarded continuations
-- Fix problem with generators not being delimited
 - Re-implement exceptions in terms of continuations
 - Tail call optimization if possible
 - numbers
@@ -7,4 +6,3 @@
   - ratios, floats
   - complex numbers
 - arrays, vectors
-- data types:

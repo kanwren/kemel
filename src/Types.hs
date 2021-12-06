@@ -218,9 +218,7 @@ symbolSource = unsafePerformIO (newIORef 0)
 -- state.
 genSym :: IO Symbol
 genSym = do
-  n <- atomicModifyIORef' symbolSource $ \cur ->
-    let new = cur + 1
-    in (new, cur)
+  n <- atomicModifyIORef' symbolSource $ \cur -> (cur + 1, cur)
   pure $ Symbol $ mk $ "#:g" <> showt n
 
 -- | The monad for evaluating expressions.
@@ -242,13 +240,11 @@ instance MonadError Error (Eval r) where
       Right x -> pure $ Right x
       Left e -> runEval (handler e) k
 
--- TODO: make this valid
+-- TODO: these instances are invalid and a hack
 instance MonadCatch (Eval r) where
   catch :: forall e a. Exception e => Eval r a -> (e -> Eval r a) -> Eval r a
   catch (Eval k) handler = Eval $ \h ->
     k h `catch` \(err :: e) -> runEval (handler err) h
-
--- TODO: make this not a hack
 instance MonadMask (Eval r) where
   mask :: ((forall a. Eval r a -> Eval r a) -> Eval r b) -> Eval r b
   mask f = f id
@@ -262,8 +258,3 @@ instance MonadMask (Eval r) where
     b <- k x'
     c <- r x' (ExitCaseSuccess b)
     pure (b, c)
-
--- ContT Expr (ExceptT Error IO) a
--- (a -> m r) -> m r
--- (a -> ExceptT Error IO Expr) -> ExceptT Error IO Expr
--- (a -> IO (Either Error Expr)) -> IO (Either Error Expr)
