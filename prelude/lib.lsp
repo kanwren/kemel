@@ -271,6 +271,15 @@
           (go (f acc (car xs)) (cdr xs)))))
     (go z xs)))
 
+($define! reverse
+  ($lambda (xs)
+    ($define! go
+      ($lambda (acc xs)
+        ($if (null? xs)
+          acc
+          (go (cons (car xs) acc) (cdr xs)))))
+    (go () xs)))
+
 ($define! take
   ($lambda (n xs)
     ($if ($or? (<= n 0) (null? xs))
@@ -359,6 +368,7 @@
                 (go (cdr xs) (cdr ys))))))
     (go xs ys)))
 
+;;; NOTE: later extended .lsp to work with iterators
 ($define! for-each
   ($lambda (xs f)
     ($the applicative f)
@@ -377,4 +387,5 @@
 (load (get-data-file-path "prelude/cells.lsp"))
 (load (get-data-file-path "prelude/promises.lsp"))
 (load (get-data-file-path "prelude/generators.lsp"))
+(load (get-data-file-path "prelude/iterators.lsp"))
 (load (get-data-file-path "prelude/coop-threads.lsp"))

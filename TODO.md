@@ -1,5 +1,6 @@
-- Re-implement control flow (like `tagbody`, `block`, etc.) in terms of delimited continuations
-- Re-implement exceptions in terms of delimited continuations
+- Implement guarded continuations
+- Fix problem with generators not being delimited
+- Re-implement exceptions in terms of continuations
 - Tail call optimization if possible
 - numbers
   - promotion rules
