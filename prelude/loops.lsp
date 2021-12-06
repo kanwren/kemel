@@ -1,4 +1,4 @@
-($provide! ($while $do-while $while-then)
+($provide! ($while $do-while $while-then $for-each)
   ($define! make-label
     ($lambda ()
       ($let/cc k
@@ -68,4 +68,24 @@
                                          (list $lambda (list) (list apply-continuation continue-cont-name (list list #inert)))))
                              body))
                 final
+                (list loop-start-label-name))))))
+
+  ($define! $for-each
+    ($macro (binder iter . body)
+      ($the symbol binder)
+      ($let ((break-cont-name (gensym))
+             (iterator-name (gensym))
+             (loop-start-label-name (gensym)))
+        (list $let/cc break-cont-name
+              (list
+                $let
+                (list (list ($quote break)
+                            (list $lambda ($quote args)
+                                  (list apply-continuation break-cont-name
+                                        (list list (list arg-or-inert ($quote args)))))))
+                (list $define! iterator-name iter)
+                (list $define! loop-start-label-name (list make-label))
+                (list $define! binder (list next iterator-name))
+                (list $when (list equal? binder :done) (list apply-continuation break-cont-name (list list #inert)))
+                (list* $let (list (list ($quote continue) loop-start-label-name)) body)
                 (list loop-start-label-name)))))))
