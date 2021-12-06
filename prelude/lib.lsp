@@ -57,9 +57,9 @@
            (list $vau formals env-name
                  ($if (null? body)
                    nil
-                   ($if (> (length body) 1)
-                     (cons $sequence body)
-                     (car body))))
+                   ($if (null? (cdr body))
+                     (car body)
+                     (cons $sequence body))))
            env))))
    $vau))
 
