@@ -368,7 +368,6 @@
                 (go (cdr xs) (cdr ys))))))
     (go xs ys)))
 
-;;; NOTE: later extended .lsp to work with iterators
 ($define! for-each
   ($lambda (xs f)
     ($the applicative f)
@@ -389,3 +388,4 @@
 (load (get-data-file-path "prelude/generators.lsp"))
 (load (get-data-file-path "prelude/iterators.lsp"))
 (load (get-data-file-path "prelude/coop-threads.lsp"))
+(load (get-data-file-path "prelude/loops.lsp"))
