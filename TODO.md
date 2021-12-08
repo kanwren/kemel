@@ -1,8 +1,8 @@
 - Implement guarded continuations
 - Re-implement exceptions in terms of continuations
-- Tail call optimization if possible
 - numbers
   - promotion rules
   - ratios, floats
   - complex numbers
 - arrays, vectors
+- sum types
