@@ -92,14 +92,12 @@ getContinuation name = \case
   LContinuation c -> pure c
   x -> typeError name "continuation" x
 
-getList :: Symbol -> Expr r -> Eval r [Expr r]
+getList :: Symbol -> Expr r -> Eval r (NonEmpty (Expr r))
 getList name = \case
-  LList xs -> pure xs
-  x -> typeError name "list" x
-
-getDottedList :: Symbol -> Expr r -> Eval r (NonEmpty (Expr r), Expr r)
-getDottedList name = \case
-  LDottedList xs x -> pure (xs, x)
+  LPair x xs ->
+    case pairToList x xs of
+      Right ys -> pure ys
+      Left _ -> evalError $ showt name <> ": expected proper list, but got improper list"
   x -> typeError name "list" x
 
 getCombiner :: Symbol -> Expr r -> Eval r (Combiner r)

@@ -6,7 +6,6 @@ module Builtins.Bootstrap (builtinBootstrap) where
 import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable (traverse_)
-import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (isJust)
 import Data.Unique (newUnique)
 import TextShow (showt)
@@ -36,8 +35,8 @@ builtinBootstrap =
 vau :: Builtin r
 vau staticEnv [params, env, body] = do
   envName <- case env of
-    LIgnore   -> pure IgnoreBinder
-    LSymbol s -> pure $ NamedBinder s
+    LIgnore   -> pure Nothing
+    LSymbol s -> pure $ Just s
     x -> evalError $ "$vau: invalid environment name: " <> showt x
   paramTree <- parseParamTree "$vau" params
   let
@@ -102,13 +101,11 @@ makeEncapsulation _ [] = do
         when (i /= typeId) $ evalError "<decapsulate>: encapsulation mismatch"
         pure val
       args -> numArgs "<decapsulate>" 1 args
-  pure $ LList [encapsulate, test, decapsulate]
+  pure $ listToExpr [encapsulate, test, decapsulate]
 makeEncapsulation _ args = numArgs "make-encapsulation-type" 0 args
 
 cons :: Builtin r
-cons _ [x, LList y] = pure $ LList (x:y)
-cons _ [x, LDottedList (y :| ys) z] = pure $ LDottedList (x :| (y : ys)) z
-cons _ [x, y] = pure $ LDottedList (x :| []) y
+cons _ [x, y] = pure $ LPair x y
 cons _ args = numArgs "cons" 2 args
 
 binds :: Builtin r

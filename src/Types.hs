@@ -13,8 +13,8 @@
 
 module Types (
     Symbol(..), Keyword(..),
-    Binder(..), ParamTree(..), Closure(..), Operative(..), Combiner(..), Builtin,
-    Expr(..),
+    ParamTree(..), Closure(..), Operative(..), Combiner(..), Builtin,
+    Expr(..), pairToList, listToExpr,
     renderType, typeToSymbol, symbolToTypePred,
     Encapsulation(..),
     Environment(..), newEnvironment, newEnvironmentWith,
@@ -31,14 +31,13 @@ import Data.CaseInsensitive (CI, foldedCase, mk)
 import Data.HashTable.IO qualified as HIO
 import Data.Hashable (Hashable)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
-import Data.List.NonEmpty (NonEmpty)
-import Data.List.NonEmpty qualified as NonEmpty
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.String (IsString(..))
 import Data.Text (Text)
 import Data.Unique (Unique)
 import System.IO.Unsafe (unsafePerformIO)
 import TextShow (TextShow(..))
-import TextShow qualified (fromText, unwordsB, FromTextShow(..))
+import TextShow qualified (fromText, FromTextShow(..))
 
 -- | The data type of all variable names
 newtype Symbol = Symbol (CI Text)
@@ -53,24 +52,18 @@ newtype Keyword = Keyword { getKeyword :: Symbol }
 instance TextShow Keyword where
   showb (Keyword s) = ":" <> showb s
 
--- | Specifies whether to bind a variable when calling an operator, and if so,
--- what name it should get. For example, `($lambda (#ignore) ...)` will take one
--- parameter, but will not bind it to any names.
-data Binder
-  = IgnoreBinder
-  | NamedBinder Symbol
-
 data ParamTree
-  = BoundParam Binder
-  | ParamList [ParamTree]
-  | ParamDottedList (NonEmpty ParamTree) Binder
+  = IgnoreParam
+  | BoundParam !Symbol
+  | ParamNull
+  | ParamPair !ParamTree !ParamTree
 
 -- | The definition of a user-defined vau operative. Holds the parameter
 -- specification, vau body, and the static environment closed over when the vau
 -- is created.
 data Closure r = Closure
   { closureParams :: ParamTree
-  , closureDynamicEnv :: Binder
+  , closureDynamicEnv :: Maybe Symbol
   , closureStaticEnv :: Environment r
   , closureBody :: Expr r
   }
@@ -104,11 +97,24 @@ data Expr r
   | LSymbol !Symbol
   | LEncapsulation !(Encapsulation r)
   | LEnv !(Environment r)
-  | LContinuation (Expr r -> Eval r (Expr r))
-  | LList ![Expr r]
-  | LDottedList !(NonEmpty (Expr r)) !(Expr r)
+  | LContinuation !(Expr r -> Eval r (Expr r))
+  | LNull
+  | LPair !(Expr r) !(Expr r)
   | LCombiner !(Combiner r)
   deriving Show via (TextShow.FromTextShow (Expr r))
+
+pairToList :: Expr r -> Expr r -> Either (NonEmpty (Expr r), Expr r) (NonEmpty (Expr r))
+pairToList car cdr =
+  case go cdr of
+    (xs, LNull) -> Right (car:|xs)
+    (xs, y) -> Left (car:|xs, y)
+  where
+    go (LPair x xs) = let (ys, y) = go xs in (x:ys, y)
+    go LNull = ([], LNull)
+    go y = ([], y)
+
+listToExpr :: [Expr r] -> Expr r
+listToExpr = foldr LPair LNull
 
 instance Eq (Expr r) where
   LInert == LInert = True
@@ -121,8 +127,8 @@ instance Eq (Expr r) where
   LEncapsulation e1 == LEncapsulation e2 = e1 == e2
   LEnv x == LEnv y = x == y
   LContinuation _ == LContinuation _ = False
-  LList x == LList y = x == y
-  LDottedList x x' == LDottedList y y' = x == y && x' == y'
+  LNull == LNull = True
+  LPair x xs == LPair y ys = x == y && xs == ys
   LCombiner (ApplicativeCombiner c1) == LCombiner (ApplicativeCombiner c2) = (==) (LCombiner c1) (LCombiner c2)
   LCombiner (OperativeCombiner _) == LCombiner (OperativeCombiner _) = False -- TODO
   _ == _ = False
@@ -142,9 +148,8 @@ typeToSymbol = \case
   LEncapsulation _ -> "encapsulation"
   LEnv _ -> "environment"
   LContinuation _ -> "continuation"
-  LList [] -> "null"
-  LList (_:_) -> "pair"
-  LDottedList _ _ -> "pair"
+  LNull -> "null"
+  LPair _ _ -> "pair"
   LCombiner (OperativeCombiner _) -> "operative"
   LCombiner (ApplicativeCombiner _) -> "applicative"
 
@@ -160,9 +165,9 @@ symbolToTypePred = \case
   "symbol" -> pure $ \case LSymbol _ -> True; _ -> False
   "environment" -> pure $ \case LEnv _ -> True; _ -> False
   "continuation" -> pure $ \case LContinuation _ -> True; _ -> False
-  "null" -> pure $ \case LList [] -> True; _ -> False
-  "list" -> pure $ \case LList _ -> True; LDottedList _ _ -> True; _ -> False
-  "pair" -> pure $ \case LDottedList _ _ -> True; LList (_:_) -> True; _ -> False
+  "null" -> pure $ \case LNull -> True; _ -> False
+  "list" -> pure $ \case LNull -> True; LPair _ _ -> True; _ -> False
+  "pair" -> pure $ \case LPair _ _ -> True; _ -> False
   "combiner" -> pure $ \case LCombiner _ -> True; _ -> False
   "operative" -> pure $ \case LCombiner (OperativeCombiner _) -> True; _ -> False
   "applicative" -> pure $ \case LCombiner (ApplicativeCombiner _) -> True; _ -> False
@@ -181,9 +186,13 @@ instance TextShow (Expr r) where
     LEncapsulation _ -> "<encapsulation>"
     LEnv _ -> "<environment>"
     LContinuation _ -> "<continuation>"
-    LList [] -> "()"
-    LList xs -> "(" <> TextShow.unwordsB (fmap showb xs) <> ")"
-    LDottedList xs x -> "(" <> TextShow.unwordsB (fmap showb (NonEmpty.toList xs)) <> " . " <> showb x <> ")"
+    LNull -> "()"
+    LPair x xs ->
+      let
+        renderTail LNull = ""
+        renderTail (LPair y ys) = " " <> showb y <> renderTail ys
+        renderTail y = " . " <> showb y
+      in "(" <> showb x <> renderTail xs <> ")"
     LCombiner c -> showb c
 
 newtype Error = EvalError Text

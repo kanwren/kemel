@@ -44,7 +44,6 @@ executable kemel
     -- other-extensions:
     build-depends:    , base >=4.13.0.0
                       , attoparsec
-                      , parser-combinators
                       , containers
                       , mtl
                       , transformers

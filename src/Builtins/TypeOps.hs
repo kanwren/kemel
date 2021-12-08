@@ -19,19 +19,19 @@ typep name v = go
       case symbolToTypePred s of
         Just p  -> pure $ p v
         Nothing -> evalError $ showt name <> ": invalid type specifier"
-    go (LList (LSymbol "and":spec)) = allM go spec
-    go (LList (LSymbol "or":spec)) = anyM go spec
-    go (LList (LSymbol "not":spec)) =
+    go (LPair (LSymbol "and") spec) = allM go =<< getList name spec
+    go (LPair (LSymbol "or") spec) = anyM go =<< getList name spec
+    go (LPair (LSymbol "not") spec) =
       case spec of
-        [p] -> not <$> go p
-        _ -> evalError $ showt name <> ": expected exactly 1 argument to not, but got " <> showt (length spec)
-    go (LList (LSymbol "integer":spec)) =
+        LPair p LNull -> not <$> go p
+        _ -> evalError $ showt name <> ": invalid arguments to not predicate: " <> showt spec
+    go (LPair (LSymbol "integer") spec) =
       case v of
         LInt n ->
           case spec of
-            [LInt lower] -> pure $ lower <= n
-            [LList [LInt lower]] -> pure $ lower <= n
-            [LInt lower, LInt upper] -> pure $ lower <= n && n <= upper
+            LPair (LInt lower) LNull -> pure $ lower <= n
+            LPair (LPair (LInt lower) LNull) LNull -> pure $ lower <= n
+            LPair (LInt lower) (LPair (LInt upper) LNull) -> pure $ lower <= n && n <= upper
             _ -> evalError $ showt name <> ": invalid type specifier: invalid arguments to predicate integer"
         _ -> pure False
     go _ = evalError $ showt name <> ": invalid type specifier"

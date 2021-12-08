@@ -5,14 +5,16 @@
 
 module Main (main) where
 
-import Control.Applicative.Combinators (optional)
+import Control.Applicative (optional)
 import Control.Exception (SomeException, displayException)
 import Control.Monad.Catch (MonadCatch, catch)
+import Control.Monad.Cont (callCC)
 import Control.Monad.Error.Class (catchError)
 import Control.Monad.IO.Class
 import Control.Monad.Trans (lift)
 import Data.Attoparsec.Text (parse, IResult(..))
 import Data.Foldable (traverse_)
+import Data.HashTable.IO qualified as HIO
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -21,9 +23,7 @@ import System.Console.Haskeline (InputT, runInputT, defaultSettings, getInputLin
 import System.Console.Haskeline.Completion
 import System.Environment (getArgs, getEnv)
 import System.FilePath ((</>))
-import Data.HashTable.IO qualified as HIO
 import TextShow (showt)
-import Control.Monad.Cont (callCC)
 
 import Builtins (makeGround)
 import Core (evalFile, progn, defineVar)

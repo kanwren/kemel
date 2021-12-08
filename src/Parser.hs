@@ -7,14 +7,11 @@
 module Parser (pExprs, parseFile) where
 
 import Control.Applicative ((<|>), many)
-import Control.Applicative.Combinators (sepEndBy, optional)
 import Control.Monad (void)
 import Data.Attoparsec.Text as AT hiding (space)
 import Data.CaseInsensitive (mk)
 import Data.Char (isSpace)
 import Data.Functor (($>))
-import Data.List.NonEmpty (NonEmpty(..))
-import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as Text
 
@@ -51,19 +48,15 @@ pExpr = choice
       where
         idHeadChar = letter <|> satisfy (\c -> Text.any (c ==) "+-*/!$%&:<=>?@^_~")
         idChar = idHeadChar <|> digit <|> satisfy (\c -> Text.any (c ==) "+-#.")
-    between s e m = s *> m <* e
-    pList = label "list" $ between (symbol "(") (char ')') $ do
-      leading <- pExpr `sepEndBy` space
-      case NonEmpty.nonEmpty leading of
-        Nothing -> pure $ LList leading
-        Just neLeading -> optional (symbol "." *> lexeme pExpr) >>= \case
-          Nothing -> pure $ LList leading
-          Just (LList xs) -> pure $ LList (leading ++ xs)
-          Just (LDottedList xs x) -> pure $ LDottedList (prependList leading xs) x
-          Just end -> pure $ LDottedList neLeading end
-    prependList :: [a] -> NonEmpty a -> NonEmpty a
-    prependList [] (y:|ys) = y:|ys
-    prependList (x:xs) (y:|ys) = x :| (xs ++ y : ys)
+    pList = label "list" $ symbol "(" *> pList'
+    pList' = do
+      let
+        pNull = space *> char ')' $> LNull
+        pPair = do
+          car <- lexeme pExpr
+          cdr <- pList' <|> (symbol "." *> lexeme pExpr <* char ')')
+          pure $ LPair car cdr
+      pNull <|> pPair
 
 pExprs :: Parser [Expr r]
 pExprs = space *> manyTill (lexeme pExpr) endOfInput

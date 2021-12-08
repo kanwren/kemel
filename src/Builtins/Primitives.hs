@@ -10,6 +10,7 @@ import Data.Bifunctor (second)
 import Data.CaseInsensitive (mk, foldedCase)
 import Data.Functor (($>), (<&>))
 import Data.List (foldl', foldl1')
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text.IO
 import TextShow (TextShow(..))
@@ -120,7 +121,8 @@ ige _ = comparison ">=" (>=)
 ile _ = comparison "<=" (<=)
 
 primLength :: Builtin r
-primLength _ [LList xs] = pure $ LInt $ fromIntegral $ length xs
+primLength _ [LNull] = pure $ LInt 0
+primLength _ [l@(LPair _ _)] = LInt . fromIntegral . NonEmpty.length <$> getList "length" l
 primLength _ [LString xs] = pure $ LInt $ fromIntegral $ Text.length xs
 primLength _ [x] = typeError "length" "sequence" x
 primLength _ args = numArgs "length" 1 args
