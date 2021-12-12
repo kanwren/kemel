@@ -9,7 +9,7 @@
     ($cond
       ((pair? xs) (cell-cons (car xs) (list->cell (cdr xs))))
       ((null? xs) nil)
-      (otherwise  xs))))
+      (#t xs))))
 
 ($define! cell->list
   ($lambda (xs)

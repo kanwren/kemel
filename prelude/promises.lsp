@@ -40,7 +40,7 @@
          (set-promise-ctx-obj! ctx val)
          (set-promise-ctx-env! ctx ())
          val)
-        (otherwise
+        (#t
           ;; val is a promise; repeat
           (set-box! b (unbox (promise-decaps val)))
           (force-promise b))))))

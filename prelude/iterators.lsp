@@ -190,4 +190,4 @@
                       (yield n)
                       (go (+ n step)))))
                 (go first))))))
-        (otherwise ($the null (cdddr rest)))))))
+        (#t ($the null (cdddr rest)))))))
