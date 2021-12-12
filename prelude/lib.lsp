@@ -99,6 +99,26 @@
           (cons (f (car xs)) (go (cdr xs))))))
     (go xs)))
 
+($define! all?
+  ($lambda (pred xs)
+    ($the applicative pred)
+    ($define! go
+      ($lambda (xs)
+        ($if (null? xs)
+          #t
+          ($and? (pred (car xs)) (go (cdr xs))))))
+    (go xs)))
+
+($define! any?
+  ($lambda (pred xs)
+    ($the applicative pred)
+    ($define! go
+      ($lambda (xs)
+        ($if (null? xs)
+          #f
+          ($or? (pred (car xs)) (go (cdr xs))))))
+    (go xs)))
+
 ;;; === Environments ===
 
 ($define! get-current-environment
@@ -389,3 +409,4 @@
 (load (get-data-file-path "prelude/iterators.lsp"))
 (load (get-data-file-path "prelude/coop-threads.lsp"))
 (load (get-data-file-path "prelude/loops.lsp"))
+(load (get-data-file-path "prelude/match.lsp"))
