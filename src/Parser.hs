@@ -46,8 +46,8 @@ pExpr = choice
       , mk <$> choice [string "+", string "-"]
       ]
       where
-        idHeadChar = letter <|> satisfy (\c -> Text.any (c ==) "+-*/!$%&:<=>?@^_~")
-        idChar = idHeadChar <|> digit <|> satisfy (\c -> Text.any (c ==) "+-#.")
+        idHeadChar = letter <|> satisfy (\c -> Text.any (c ==) "+-*/!$%&<=>?@^_~")
+        idChar = idHeadChar <|> digit <|> satisfy (\c -> Text.any (c ==) "+-#.:")
     pList = label "list" $ symbol "(" *> pList'
     pList' = do
       let
