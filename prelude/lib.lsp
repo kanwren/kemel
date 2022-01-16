@@ -99,6 +99,16 @@
           (cons (f (car xs)) (go (cdr xs))))))
     (go xs)))
 
+($define! concat-map
+  ($lambda (f xs)
+    ($the applicative f)
+    ($define! go
+      ($lambda (xs)
+        ($if (null? xs)
+          nil
+          (append (f (car xs)) (go (cdr xs))))))
+    (go xs)))
+
 ($define! all?
   ($lambda (pred xs)
     ($the applicative pred)
