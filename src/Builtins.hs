@@ -27,7 +27,7 @@ makeGround rootContinuation = do
   env <- liftIO $ newEnvironmentWith (concat builtins) []
   defineVar env "root-continuation" (LContinuation rootContinuation)
   contents <- liftIO $ do
-    preludeFile <- getDataFileName "prelude.lsp"
+    preludeFile <- getDataFileName "stdlib/prelude.kml"
     Text.IO.readFile preludeFile
   _ <- evalFile env contents
   liftIO $ newEnvironment [env]

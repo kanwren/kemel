@@ -410,13 +410,23 @@
             (go (cdr xs))))))
     (go xs)))
 
-(load (get-data-file-path "prelude/continuations.lsp"))
-(load (get-data-file-path "prelude/records.lsp"))
-(load (get-data-file-path "prelude/boxes.lsp"))
-(load (get-data-file-path "prelude/cells.lsp"))
-(load (get-data-file-path "prelude/promises.lsp"))
-(load (get-data-file-path "prelude/generators.lsp"))
-(load (get-data-file-path "prelude/iterators.lsp"))
-(load (get-data-file-path "prelude/coop-threads.lsp"))
-(load (get-data-file-path "prelude/loops.lsp"))
-(load (get-data-file-path "prelude/match.lsp"))
+($define! load-stdlib
+  ($vau (p) env
+    (eval (list load
+                (list get-data-file-path
+                      (list string-append "stdlib/" (eval p env) ".kml")))
+          env)))
+
+(load-stdlib "continuations")
+(load-stdlib "records")
+(load-stdlib "boxes")
+(load-stdlib "cells")
+(load-stdlib "promises")
+(load-stdlib "generators")
+(load-stdlib "iterators")
+(load-stdlib "loops")
+
+;; Not included in prelude:
+;; - coop-threads
+;; - match
+;; - microkanren

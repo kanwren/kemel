@@ -20,8 +20,7 @@ category:           Language
 extra-source-files: CHANGELOG.md
 
 data-files:
-  prelude.lsp
-  prelude/**/*.lsp
+  stdlib/**/*.kml
 
 executable kemel
     main-is:          Main.hs
